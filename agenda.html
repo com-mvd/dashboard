@@ -499,7 +499,6 @@ svg{display:block;width:100%;height:auto}
 
 </main>
 
-<input type="file" id="picker" accept=".csv" hidden>
 
 <script src="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js"></script>
 <script src="assets/bases.js"></script>
@@ -510,8 +509,7 @@ svg{display:block;width:100%;height:auto}
 const CONFIG = {
   /* DATOS DE AGENDA — base "agenda" del repo com-mvd/bases, que actualiza el
      botón Actualizar de https://com-mvd.github.io/com/ (últimos 90 días).
-     assets/bases.js la entrega con las mismas columnas que el viejo agenda.csv.
-     (Sigue pudiéndose cargar un CSV a mano con el botón de archivo.) */
+     assets/bases.js la entrega con las mismas columnas que el viejo agenda.csv. */
   /* copia de respaldo de los cupos */
   cupos: [
     "data/cupos.json",
@@ -675,16 +673,6 @@ function parseCSVFilas(text){
   }
   if (campo !== "" || fila.length){ fila.push(campo); rows.push(fila); }
   return rows;
-}
-
-/* usa la primera fila como encabezados y devuelve objetos */
-function parseCSV(text){
-  const rows = parseCSVFilas(text);
-  if (!rows.length) return [];
-  const head = rows[0].map(h => h.trim());
-  return rows.slice(1)
-    .filter(r => r.length > 1)
-    .map(r => { const o = {}; head.forEach((h,i)=> o[h] = (r[i] ?? "").trim()); return o; });
 }
 
 /* "4/9/2026" o "2026-09-04" -> "2026-09-04";  cualquier otra cosa -> null */
@@ -1153,22 +1141,8 @@ function renderEstadoError(msg){
   el.className = "datasrc show";
   el.innerHTML = '<span><b>No se pudieron cargar los datos:</b> '+esc(msg)+'</span>'
     + '<span class="sep">|</span>'
-    + '<span>Si abriste el archivo con doble clic, el navegador bloquea la lectura de archivos locales.'
-    + ' Levantá el servidor con <code>servir.bat</code>, o cargá el CSV a mano:</span>'
-    + '<button type="button" id="btn-pick">Elegir CSV…</button>';
-  $("#btn-pick").addEventListener("click", ()=> $("#picker").click());
+    + '<span>Revisá la conexión a internet y recargá la página.</span>';
 }
-
-$("#picker").addEventListener("change", async e=>{
-  const f = e.target.files[0];
-  if (!f) return;
-  DATOS.reclamos = parseCSV(await f.text());
-  if (!DATOS.cupos){
-    try { DATOS.cupos = JSON.parse(await traerTexto(CONFIG.cupos)); }
-    catch(_){ DATOS.cupos = {fuente:"(cupos no disponibles)", jornadas:[]}; }
-  }
-  arrancar();
-});
 
 /* ==========================================================================
    3.1 SERVICIOS INGRESADOS

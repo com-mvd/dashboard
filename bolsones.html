@@ -1077,7 +1077,6 @@
     </section>
   </main>
 
-  <input type="file" id="picker" accept=".csv,text/csv" hidden>
 
   <script src="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js"></script>
   <script src="assets/bases.js"></script>
@@ -1169,70 +1168,6 @@
         ">": "&gt;",
         "\"": "&quot;"
       }[caracter]));
-    }
-
-    /* Lector CSV compatible con comillas, comas y saltos de línea internos. */
-    function parseCSVFilas(texto) {
-      if (texto.charCodeAt(0) === 0xFEFF) texto = texto.slice(1);
-      const filas = [];
-      let campo = "";
-      let fila = [];
-      let enComillas = false;
-
-      for (let i = 0; i < texto.length; i++) {
-        const caracter = texto[i];
-
-        if (enComillas) {
-          if (caracter === "\"") {
-            if (texto[i + 1] === "\"") {
-              campo += "\"";
-              i++;
-            } else {
-              enComillas = false;
-            }
-          } else {
-            campo += caracter;
-          }
-          continue;
-        }
-
-        if (caracter === "\"") {
-          enComillas = true;
-        } else if (caracter === ",") {
-          fila.push(campo);
-          campo = "";
-        } else if (caracter === "\n") {
-          fila.push(campo);
-          filas.push(fila);
-          fila = [];
-          campo = "";
-        } else if (caracter !== "\r") {
-          campo += caracter;
-        }
-      }
-
-      if (campo !== "" || fila.length) {
-        fila.push(campo);
-        filas.push(fila);
-      }
-
-      return filas;
-    }
-
-    function parseCSV(texto) {
-      const filas = parseCSVFilas(texto);
-      if (!filas.length) return [];
-      const encabezados = filas[0].map(valor => valor.trim());
-
-      return filas.slice(1)
-        .filter(fila => fila.length > 1)
-        .map(fila => {
-          const registro = {};
-          encabezados.forEach((encabezado, indice) => {
-            registro[encabezado] = (fila[indice] ?? "").trim();
-          });
-          return registro;
-        });
     }
 
     /* Convierte "2026-04-17 14:00:00" sin depender de la zona horaria. */
@@ -2146,9 +2081,7 @@
       $("#loader").hidden = true;
       const aviso = $("#datasrc");
       aviso.className = "datasrc show";
-      aviso.innerHTML = `<span><b>No se pudo cargar la base:</b> ${esc(mensaje)}. Si abriste el HTML con doble clic, elegí el CSV manualmente.</span>`
-        + `<button type="button" id="btn-pick">Elegir CSV…</button>`;
-      $("#btn-pick").addEventListener("click", () => $("#picker").click());
+      aviso.innerHTML = `<span><b>No se pudo cargar la base:</b> ${esc(mensaje)}. Revisá la conexión a internet y recargá la página.</span>`;
     }
 
     async function cargar() {
@@ -2159,12 +2092,6 @@
         mostrarError(error.message || String(error));
       }
     }
-
-    $("#picker").addEventListener("change", async evento => {
-      const archivo = evento.target.files[0];
-      if (!archivo) return;
-      renderDatos(parseCSV(await archivo.text()));
-    });
 
     $("#f-muni").innerHTML = '<option value="todos">Todos</option>'
       + Object.keys(CONFIG.diasIntervencion)
