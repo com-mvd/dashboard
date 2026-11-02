@@ -17,8 +17,24 @@ const BasesCOM = (() => {
       + dosDigitos(d.getUTCHours()) + ':' + dosDigitos(d.getUTCMinutes()) + ':' + dosDigitos(d.getUTCSeconds());
   };
 
+  // Las bases grandes se publican comprimidas con gzip (zona-limpia.json.gz pesa ~5 MB en vez de ~41 MB).
+  // Si todavía no está la comprimida, se usa la .json de antes.
+  const COMPRIMIDAS = ['agenda', 'zona-limpia', 'reclamos'];
+
   async function bajar(nombre) {
-    const res = await fetch(URL_BASES + nombre + '.json?_=' + Date.now(), { cache: 'no-store' });
+    const q = '?_=' + Date.now();
+    if (COMPRIMIDAS.includes(nombre)) {
+      const res = await fetch(URL_BASES + nombre + '.json.gz' + q, { cache: 'no-store' });
+      if (res.ok) {
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        // Por si el navegador ya la descomprimió solo: gzip empieza con 1f 8b
+        const texto = bytes[0] === 0x1f && bytes[1] === 0x8b
+          ? await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text()
+          : new TextDecoder().decode(bytes);
+        return JSON.parse(texto);
+      }
+    }
+    const res = await fetch(URL_BASES + nombre + '.json' + q, { cache: 'no-store' });
     if (!res.ok) throw new Error(`No se pudo bajar la base ${nombre} (HTTP ${res.status})`);
     return res.json();
   }
