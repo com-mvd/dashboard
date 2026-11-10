@@ -1,4 +1,4 @@
-/* Lee las bases que publica el repo com-mvd/bases (las sube el n8n del COM con los botones Actualizar de
+/* Lee las bases que sube el n8n del COM a Supabase Storage (bucket "bases") con los botones Actualizar de
    https://com-mvd.github.io/com/) y las entrega como filas iguales a las de los CSV que antes estaban en data/:
    un objeto por fila, con los nombres de columna del Grafana y todo como texto
    ("2026-10-01 00:08:00", "-34.88342330", "" si está vacío).
@@ -7,7 +7,8 @@
 
    Lo público no trae teléfonos, emails ni la columna "informacion" (van cifrados aparte). */
 const BasesCOM = (() => {
-  const URL_BASES = 'https://com-mvd.github.io/bases/';
+  // Desde el 10/11/2026 las bases están en Supabase Storage (bucket público "bases"), ya no en GitHub Pages.
+  const URL_BASES = 'https://srgduwdvkgqrrmhxpzlx.supabase.co/storage/v1/object/public/bases/';
 
   const dosDigitos = n => String(n).padStart(2, '0');
   // Segundos del reloj de Montevideo (sin zona) -> "2026-10-01 00:08:00"
