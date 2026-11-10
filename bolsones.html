@@ -2086,7 +2086,7 @@
 
     async function cargar() {
       try {
-        // Base "bolsones" de Supabase Storage (botón Actualizar de https://com-mvd.github.io/com/, 90 días)
+        // Base "bolsones" de Supabase Storage (botón Actualizar del panel Supervisor de COM 2, https://com-mvd.github.io/com2/, 90 días)
         renderDatos(await BasesCOM.filas("bolsones"));
       } catch (error) {
         mostrarError(error.message || String(error));

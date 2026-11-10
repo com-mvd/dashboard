@@ -1,5 +1,5 @@
 /* Lee las bases que sube el n8n del COM a Supabase Storage (bucket "bases") con los botones Actualizar de
-   https://com-mvd.github.io/com/) y las entrega como filas iguales a las de los CSV que antes estaban en data/:
+   el panel Supervisor de COM 2, https://com-mvd.github.io/com2/) y las entrega como filas iguales a las de los CSV que antes estaban en data/:
    un objeto por fila, con los nombres de columna del Grafana y todo como texto
    ("2026-10-01 00:08:00", "-34.88342330", "" si está vacío).
 
