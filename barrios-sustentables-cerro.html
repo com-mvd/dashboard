@@ -150,12 +150,22 @@ button{font:inherit;color:inherit}
 // ── Barrios Sustentables Cerro ──────────────────────────────────────────────
 // Lee la base pública de Bolsones (bolsones.json en Supabase Storage, últimos 90 días) y se queda con las
 // solicitudes de estos edificios (columna EDIFICIO; sin importar mayúsculas ni tildes).
-// Los vaciados se piden y se confirman en el grupo de WhatsApp, y se cargan a mano en la planilla
-// "Validación Barrios Sustentables" (Apps Script en Desktop/IA/barrios-sustentables). API_URL es su
-// aplicación web y devuelve las filas con edificio, fecha y bolsones > 0.
-// Si API_URL está vacía, se lee la base de Bolsones directo (como antes de la planilla).
-// Para sumar un lugar: agregar { nombre, edif, dir, pos, color } a LUGARES (y el nombre en el Apps Script).
-const API_URL = 'https://script.google.com/macros/s/AKfycbwgeDkIdZ6AUPGR_4dQS3Z24QTRThqk_9qDoi-1NTPiySEqbty06Bmo7E4U2b-KS9Em1g/exec';
+// Los vaciados se piden y se confirman en el grupo de WhatsApp, y se cargan a mano en COM 2 (panel Admin,
+// "Carga Barrios Sustentables: Cerro"), que los guarda en la tabla vaciados de Supabase (tablero 'cerro').
+// Si VALIDADAS es false, se lee la base de Bolsones directo (como antes de que se cargaran a mano).
+// Para sumar un lugar: agregar { nombre, edif, dir, pos, color } a LUGARES, a la carga de COM 2 y a
+// vaciados_lugares en Supabase.
+const VALIDADAS = true;
+// Vaciados de la tabla vaciados de Supabase (desde el 10/11/2026; antes, la planilla "Validación Barrios Sustentables"
+// por su Apps Script). Se leen sin login con la clave pública, de la vista vaciados_publico: solo edificio, fecha y
+// bolsones > 0, sin datos personales. Se cargan en COM 2 (panel Admin). Devuelve { filas: [{ edif, fGes, cant }] }.
+const SUPABASE = 'https://srgduwdvkgqrrmhxpzlx.supabase.co', CLAVE_PUBLICA = 'sb_publishable_8ZP6-05anDJSBy39IwbSdQ_18iWRnd6';
+async function leerVaciados(tablero) {
+  const res = await fetch(`${SUPABASE}/rest/v1/vaciados_publico?tablero=eq.${tablero}&select=edificio,fecha,bolsones&order=fecha.desc`,
+    { headers: { apikey: CLAVE_PUBLICA }, cache: 'no-store' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return { filas: (await res.json()).map(v => ({ edif: v.edificio, fGes: String(v.fecha).slice(0, 16), cant: v.bolsones })) };
+}
 const FUENTE = 'https://srgduwdvkgqrrmhxpzlx.supabase.co/storage/v1/object/public/bases/bolsones.json';   // Supabase Storage (desde el 10/11/2026)
 const LUGARES = [
   { nombre: 'Plaza Débora Céspedes', edif: 'plaza debora cespedes', dir: 'EGIPTO esq. SUECIA', pos: [-34.881884, -56.24755], color: '#1baf7a' },
@@ -185,7 +195,7 @@ const porEdif = new Map(LUGARES.map(l => [l.edif, l]));
 // de la más nueva a la más vieja
 const ordenar = filas => filas.filter(r => r.lugar && r.fGesD && r.cant > 0).sort((a, b) => b.fGesD - a.fGesD);
 
-// Planilla: { filas: [{ edif, fGes, cant }] }
+// Cargas validadas: { filas: [{ edif, fGes, cant }] }
 const prepararValidadas = json => ordenar(json.filas.map(f => ({
   lugar: porEdif.get(norm(f.edif)), fGesD: f.fGes ? new Date(f.fGes) : null, cant: Number(f.cant),
 })));
@@ -246,19 +256,23 @@ function render(G) {
       <td><span class="ed"><i class="pt" style="--c:${r.lugar.color}"></i>${esc(r.lugar.nombre)}</span></td>
       <td class="num"><span class="largo">${fHora(r.fGesD)}</span><span class="corto">${fHoraCorta(r.fGesD)}</span></td>
       <td class="num n">${fmt(r.cant)}</td></tr>`).join('')
-    : `<tr><td colspan="3" class="vacio">${API_URL ? 'Todavía no hay solicitudes cargadas' : 'No hay solicitudes en estos puntos'}</td></tr>`}</tbody>`;
+    : `<tr><td colspan="3" class="vacio">${VALIDADAS ? 'Todavía no hay solicitudes cargadas' : 'No hay solicitudes en estos puntos'}</td></tr>`}</tbody>`;
 }
 
 async function cargar() {
   try {
     // Sin contraseña: se comparte por link con quien lo quiera ver (no tiene datos personales)
-    const res = API_URL ? await fetch(API_URL) : await fetch(FUENTE + '?t=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const json = await res.json();
+    let json;
+    if (VALIDADAS) json = await leerVaciados('cerro');
+    else {
+      const res = await fetch(FUENTE + '?t=' + Date.now(), { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      json = await res.json();
+    }
     // Se muestra todo junto recién cuando llegaron los datos (antes de dibujar, para que el mapa tenga tamaño)
     $('pantallaCargando').hidden = true;
     $('contenido').hidden = false;
-    render(API_URL ? prepararValidadas(json) : prepararBase(json));
+    render(VALIDADAS ? prepararValidadas(json) : prepararBase(json));
   } catch (err) {
     $('pantallaCargando').hidden = false;
     $('contenido').hidden = true;

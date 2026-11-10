@@ -109,11 +109,19 @@ button{font:inherit;color:inherit}
 
 <script>
 // ── Vaciados de bolsones edificio IM ────────────────────────────────────────
-// Se cargan a mano (bolsones-edificio-im-carga.html) en la hoja "Edificio IM" de la planilla
-// "Validación Barrios Sustentables", la misma de Cerro (Apps Script en Desktop/IA/barrios-sustentables).
-// API_URL es su aplicación web; con ?p=im devuelve las filas de esa hoja con fecha y bolsones > 0.
-const API_URL = 'https://script.google.com/macros/s/AKfycbwgeDkIdZ6AUPGR_4dQS3Z24QTRThqk_9qDoi-1NTPiySEqbty06Bmo7E4U2b-KS9Em1g/exec';
-// Tiene que coincidir con TABLEROS.im.lugares del Apps Script
+// Se cargan a mano en COM 2 (panel Admin, "Carga vaciados edificio IM"), que los guarda en la tabla vaciados de
+// Supabase (tablero 'im').
+// Vaciados de la tabla vaciados de Supabase (desde el 10/11/2026; antes, la planilla "Validación Barrios Sustentables"
+// por su Apps Script). Se leen sin login con la clave pública, de la vista vaciados_publico: solo edificio, fecha y
+// bolsones > 0, sin datos personales. Se cargan en COM 2 (panel Admin). Devuelve { filas: [{ edif, fGes, cant }] }.
+const SUPABASE = 'https://srgduwdvkgqrrmhxpzlx.supabase.co', CLAVE_PUBLICA = 'sb_publishable_8ZP6-05anDJSBy39IwbSdQ_18iWRnd6';
+async function leerVaciados(tablero) {
+  const res = await fetch(`${SUPABASE}/rest/v1/vaciados_publico?tablero=eq.${tablero}&select=edificio,fecha,bolsones&order=fecha.desc`,
+    { headers: { apikey: CLAVE_PUBLICA }, cache: 'no-store' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return { filas: (await res.json()).map(v => ({ edif: v.edificio, fGes: String(v.fecha).slice(0, 16), cant: v.bolsones })) };
+}
+// Tiene que coincidir con vaciados_lugares ('im') en Supabase
 const LUGAR = 'Edificio IM';
 
 const $ = id => document.getElementById(id);
@@ -149,10 +157,7 @@ function render(G) {
 async function cargar() {
   try {
     // Sin contraseña: se comparte por link (no tiene datos personales)
-    const res = await fetch(API_URL + '?p=im');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const json = await res.json();
-    if (!json.filas) throw new Error(json.error || 'respuesta inesperada');
+    const json = await leerVaciados('im');
     $('pantallaCargando').hidden = true;
     $('contenido').hidden = false;
     render(preparar(json));
