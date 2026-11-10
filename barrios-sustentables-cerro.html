@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Barrios Sustentables: Cerro</title>
+<link rel="icon" type="image/png" href="assets/logo-ciemsa.png">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+/* Mismo aspecto que supervision-bolsones.html y que barrios-sustentables-carga.html
+   (colores, fondo, barra, tarjetas, etiquetas y la ruedita de carga son los mismos en las dos) */
+:root{
+  --bg:#F7F6F3; --card:#FFFFFF; --border:#E6E2DA;
+  --text:#1A1714; --text2:#5F5A54; --text3:#9A948C;
+  --azul:#1b3f74; --rojo:#c0392b; --verde:#1baf7a;
+  --shadow:0 4px 20px rgba(26,23,20,.05),0 1px 3px rgba(26,23,20,.05);
+  --r:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+html{overflow-y:scroll;scrollbar-gutter:stable}
+body{font-family:'DM Sans',system-ui,sans-serif;color:var(--text);-webkit-font-smoothing:antialiased;
+  background:radial-gradient(circle at 12% 0%,#EDEEF9 0%,transparent 40%),radial-gradient(circle at 95% 100%,#E7F3EE 0%,transparent 40%),var(--bg);
+  background-attachment:fixed;min-height:100vh}
+button{font:inherit;color:inherit}
+.wrap{max-width:1200px;margin:0 auto;padding:1.5rem clamp(16px,2.5vw,2rem) 3rem;display:flex;flex-direction:column;gap:14px}
+.num{font-variant-numeric:tabular-nums}
+
+.barra{position:sticky;top:0;z-index:1200;background:linear-gradient(135deg,#0f172a 0%,#16213e 55%,#1b3f74 100%);color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.3);padding-top:env(safe-area-inset-top)}
+.barra-in{max-width:1200px;margin:0 auto;min-height:84px;padding:12px clamp(16px,2.5vw,2rem);display:flex;justify-content:center;align-items:center}
+.titulo{display:flex;align-items:center;gap:10px;min-width:0}
+.titulo .ico{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:28px;height:28px;font-family:'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',sans-serif;font-size:23px;line-height:28px}
+.titulo h1{font-family:'Segoe UI',Arial,sans-serif;font-size:24px;font-weight:700;letter-spacing:-.01em;line-height:1.15}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow)}
+.card-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:.8rem 1rem;border-bottom:1px solid var(--border)}
+.card-h h2{font-size:15px;font-weight:700}
+.card-h .nota{margin-left:auto;font-size:12px;color:var(--text3)}
+
+/* Mapa con los puntos y su referencia */
+.mapa-card{overflow:hidden;isolation:isolate}
+#mapa{height:440px;background:#EFEDE8}
+/* Encabezado del mapa: solo la referencia de colores, centrada (informativa, no filtra) */
+.mapa-h{justify-content:center}
+.ley{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.lg{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;color:var(--text2);background:var(--card)}
+.lg i,.pt{width:11px;height:11px;border-radius:50%;background:var(--c);flex:none}
+
+/* Indicadores */
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.kpi{padding:1rem 1.1rem}
+.kpi-n{font-size:30px;font-weight:700;line-height:1.1;letter-spacing:-.02em}
+.kpi-l{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+/* Por punto: una fila por lugar con sus números */
+.puntos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.punto{padding:.9rem 1rem;border-left:5px solid var(--c)}
+.punto h3{font-size:14.5px;font-weight:700}
+.punto .dir{font-size:12px;color:var(--text3);margin-bottom:8px}
+.punto dl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}
+.punto dt{color:var(--text2)}
+.punto dd{font-weight:700;text-align:right}
+
+/* Detalle */
+/* Sin título: la tabla arranca por los encabezados. overflow:hidden recorta las cuatro esquinas redondeadas */
+.detalle{overflow:hidden}
+.tabla-wrap{overflow-x:auto}
+/* Tres columnas del mismo ancho y todo centrado, para que el espacio quede repartido parejo */
+.tabla{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:fixed}
+.tabla th{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;text-align:center;padding:.6rem .9rem;background:#F7F6F3;border-bottom:1px solid var(--border);white-space:nowrap}
+.tabla td{padding:.6rem .9rem;border-bottom:1px solid #ECE9E3;color:var(--text2);white-space:nowrap;text-align:center}
+.tabla tbody tr:nth-child(even) td{background:#FBFAF8}
+.tabla tbody tr:hover td{background:#F3F1EC}
+.tabla tbody tr:last-child td{border-bottom:0}
+.tabla .c{text-align:center}
+/* El edificio va en un bloque de ancho fijo, centrado en la columna y alineado a la izquierda: los puntos quedan en fila */
+.tabla .ed{display:inline-flex;align-items:center;gap:8px;width:190px;max-width:100%;text-align:left;font-weight:700;color:var(--text)}
+.tabla .n{font-weight:700;color:var(--text)}
+/* Textos largos (PC) y cortos (celular) de encabezados y fechas */
+.tabla .corto{display:none}
+/* Celular: cada fila en un solo renglón (encabezados y año cortos; si igual no entra, la tabla se desliza) */
+@media (max-width:600px){
+  .tabla{table-layout:auto;font-size:12px}
+  .tabla th,.tabla td{padding:.55rem .35rem;white-space:nowrap}
+  .tabla th:first-child,.tabla td:first-child{text-align:left;padding-left:.7rem}
+  .tabla th{letter-spacing:.03em}
+  .tabla .ed{width:auto;gap:6px}
+  .tabla .largo{display:none}
+  .tabla .corto{display:inline}
+}
+.vacio{text-align:center;color:var(--text3);font-size:14px;padding:1.2rem}
+
+/* Mientras se leen los datos: la ruedita, igual que en la página de carga, mb y com-mvd/dashboard */
+.carga{min-height:max(260px,calc(100vh - 130px));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 16px;text-align:center}
+.ruedita{width:38px;height:38px;border:3px solid #dbe3ed;border-top-color:#2563eb;border-radius:50%;animation:girar .8s linear infinite}
+@keyframes girar{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.ruedita{animation-duration:2.4s}}
+.carga-t{color:#64748b;font-size:14px;font-weight:600}
+.carga-t.error{color:var(--rojo)}
+.btn{border:0;border-radius:12px;padding:11px 22px;font-size:15px;font-weight:700;cursor:pointer;color:#fff;background:linear-gradient(135deg,#0f172a 0%,#16213e 55%,#1b3f74 100%)}
+
+@media (max-width:900px){
+  .puntos{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+  .barra-in{padding:10px 16px;min-height:64px}
+  .titulo h1{font-size:19px}
+  .titulo .ico{width:24px;height:24px;font-size:19px;line-height:24px}
+  #mapa{height:360px}
+  .kpi-n{font-size:24px}
+}
+</style>
+</head>
+<body>
+
+<header class="barra">
+  <div class="barra-in">
+    <div class="titulo">
+      <span class="ico" aria-hidden="true">♻</span>
+      <h1>Barrios Sustentables: Cerro</h1>
+    </div>
+  </div>
+</header>
+
+<!-- Mientras se leen los datos -->
+<div class="carga" id="pantallaCargando" role="status" aria-live="polite">
+  <div class="ruedita" id="ruedita"></div>
+  <div class="carga-t" id="cargaT">Cargando información</div>
+  <button class="btn" type="button" id="reintentar" hidden>Reintentar</button>
+</div>
+
+<div class="wrap" id="contenido" hidden>
+  <section class="card mapa-card">
+    <div class="card-h mapa-h"><div class="ley" id="ley"></div></div>
+    <div id="mapa"></div>
+  </section>
+
+  <div class="kpis" id="kpis"></div>
+  <div class="puntos" id="puntos"></div>
+
+  <section class="card detalle">
+    <div class="tabla-wrap"><table class="tabla" id="tabla"></table></div>
+  </section>
+</div>
+
+
+<script>
+// ── Barrios Sustentables Cerro ──────────────────────────────────────────────
+// Lee la base pública de Bolsones (bolsones.json en Supabase Storage, últimos 90 días) y se queda con las
+// solicitudes de estos edificios (columna EDIFICIO; sin importar mayúsculas ni tildes).
+// Los vaciados se piden y se confirman en el grupo de WhatsApp, y se cargan a mano en la planilla
+// "Validación Barrios Sustentables" (Apps Script en Desktop/IA/barrios-sustentables). API_URL es su
+// aplicación web y devuelve las filas con edificio, fecha y bolsones > 0.
+// Si API_URL está vacía, se lee la base de Bolsones directo (como antes de la planilla).
+// Para sumar un lugar: agregar { nombre, edif, dir, pos, color } a LUGARES (y el nombre en el Apps Script).
+const API_URL = 'https://script.google.com/macros/s/AKfycbwgeDkIdZ6AUPGR_4dQS3Z24QTRThqk_9qDoi-1NTPiySEqbty06Bmo7E4U2b-KS9Em1g/exec';
+const FUENTE = 'https://srgduwdvkgqrrmhxpzlx.supabase.co/storage/v1/object/public/bases/bolsones.json';   // Supabase Storage (desde el 10/11/2026)
+const LUGARES = [
+  { nombre: 'Plaza Débora Céspedes', edif: 'plaza debora cespedes', dir: 'EGIPTO esq. SUECIA', pos: [-34.881884, -56.24755], color: '#1baf7a' },
+  { nombre: 'Federación FOICA', edif: 'federacion foica', dir: 'HOLANDA 1715', pos: [-34.884961, -56.249596], color: '#2a78d6' },
+  { nombre: 'Plaza de Deportes N11', edif: 'plaza de deportes n11', dir: 'PORTUGAL esq. AUSTRIA', pos: [-34.881595, -56.252055], color: '#eb6834' },
+  { nombre: 'Seccional N24', edif: 'seccional n24', dir: 'PRUSIA 1895', pos: [-34.8873037, -56.2530708], color: '#8b5cf6' },
+  { nombre: 'Escuela Luisa Casteran', edif: 'escuela luisa casteran', dir: 'CHINA 1898', pos: [-34.8808973, -56.2541799], color: '#e0457b' },
+  { nombre: 'Formativas de Rampla', edif: 'formativas de rampla', dir: 'TURQUIA 3335', pos: [-34.8911277, -56.2466996], color: '#d99a00' },
+  { nombre: 'Club de Pesca', edif: 'club de pesca', dir: 'GRECIA 3152', pos: [-34.8954891, -56.2470705], color: '#14a3b8' },
+  { nombre: 'Escuela N29', edif: 'escuela n29', dir: 'PORTUGAL 3325', pos: [-34.8919223, -56.2500098], color: '#a0663a' },
+  { nombre: 'Club Verdirrojo', edif: 'club verdirrojo', dir: 'PRUSIA 1621', pos: [-34.8864681, -56.247238], color: '#5b6b82' },
+];
+const CARTO_KEY = 'cb1_4dpf_1_b2ca9299be611862d5d23c88';
+
+const $ = id => document.getElementById(id);
+const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = n => (n ?? 0).toLocaleString('es-UY', { maximumFractionDigits: 1 });
+const pad = n => String(n).padStart(2, '0');
+const fFecha = d => d ? `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}` : '';
+const fHora = d => d ? `${fFecha(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}` : '';
+// Para el celular: año con dos cifras ("03/11/26 16:49")
+const fHoraCorta = d => d ? `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)} ${pad(d.getHours())}:${pad(d.getMinutes())}` : '';
+const porEdif = new Map(LUGARES.map(l => [l.edif, l]));
+
+// Cada fila queda como { lugar, fGesD, cant }: solo las que tienen gestión y algún bolsón,
+// de la más nueva a la más vieja
+const ordenar = filas => filas.filter(r => r.lugar && r.fGesD && r.cant > 0).sort((a, b) => b.fGesD - a.fGesD);
+
+// Planilla: { filas: [{ edif, fGes, cant }] }
+const prepararValidadas = json => ordenar(json.filas.map(f => ({
+  lugar: porEdif.get(norm(f.edif)), fGesD: f.fGes ? new Date(f.fGes) : null, cant: Number(f.cant),
+})));
+
+// Base de Bolsones directo, sin validar. La cantidad sale de "Cantidad transportada" (cantT)
+function prepararBase(json) {
+  const ix = Object.fromEntries(json.columnas.map((c, i) => [c, i]));
+  return ordenar(json.registros.map(a => ({
+    lugar: porEdif.get(norm(a[ix.edif])), fGesD: a[ix.fGes] ? new Date(a[ix.fGes]) : null, cant: a[ix.cantT],
+  })));
+}
+
+function render(G) {
+  // Cuentas por lugar
+  for (const l of LUGARES) {
+    const g = G.filter(r => r.lugar === l);
+    Object.assign(l, {
+      n: g.length,
+      bolsones: g.reduce((s, r) => s + r.cant, 0),
+      ultima: g[0]?.fGesD || null,
+    });
+  }
+
+  // Mapa
+  // Sin botones de zoom: se acerca con la rueda o con dos dedos
+  const mapa = L.map('mapa', { zoomControl: false, attributionControl: false, zoomSnap: .25 }).setView([-34.883, -56.25], 15);
+  L.tileLayer(`https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
+    maxNativeZoom: 18, maxZoom: 20, subdomains: 'abcd',
+  }).addTo(mapa);
+  for (const l of LUGARES) {
+    // Solo marcan el lugar: sin ventanitas ni clic
+    L.circleMarker(l.pos, { radius: 11, color: '#fff', weight: 3, fillColor: l.color, fillOpacity: 1, interactive: false })
+      .addTo(mapa);
+  }
+  // Encuadra todos los puntos, con un margen para que se vea algo del barrio alrededor
+  mapa.fitBounds(LUGARES.map(l => l.pos), { padding: [50, 50], maxZoom: 16.5, animate: false });
+  // Referencia de colores: solo informativa, no filtra
+  $('ley').innerHTML = LUGARES.map(l => `<span class="lg" style="--c:${l.color}"><i></i>${esc(l.nombre)}</span>`).join('');
+
+  // Indicadores generales
+  const total = G.reduce((s, r) => s + r.cant, 0);
+  const kpis = [
+    ['Bolsones vaciados', fmt(total)],
+    ['Solicitudes realizadas', fmt(G.length)],
+  ];
+  $('kpis').innerHTML = kpis.map(([l, n]) => `<div class="card kpi"><div class="kpi-l">${l}</div><div class="kpi-n num">${n}</div></div>`).join('');
+
+  // Por punto
+  $('puntos').innerHTML = LUGARES.map(l => `<div class="card punto" style="--c:${l.color}">
+      <h3>${esc(l.nombre)}</h3><div class="dir">${esc(l.dir)}</div>
+      <dl><dt>Solicitudes realizadas</dt><dd class="num">${l.n}</dd>
+      <dt>Bolsones vaciados</dt><dd class="num">${fmt(l.bolsones)}</dd>
+      <dt>Última gestión</dt><dd class="num">${l.ultima ? fHora(l.ultima) : '—'}</dd></dl></div>`).join('');
+
+  // Detalle
+  $('tabla').innerHTML = `<thead><tr><th>Edificio</th><th><span class="largo">Fecha de gestión</span><span class="corto">Fecha</span></th><th class="c"><span class="largo">Cantidad bolsones</span><span class="corto">Bolsones</span></th></tr></thead><tbody>${
+    G.length ? G.map(r => `<tr>
+      <td><span class="ed"><i class="pt" style="--c:${r.lugar.color}"></i>${esc(r.lugar.nombre)}</span></td>
+      <td class="num"><span class="largo">${fHora(r.fGesD)}</span><span class="corto">${fHoraCorta(r.fGesD)}</span></td>
+      <td class="num n">${fmt(r.cant)}</td></tr>`).join('')
+    : `<tr><td colspan="3" class="vacio">${API_URL ? 'Todavía no hay solicitudes cargadas' : 'No hay solicitudes en estos puntos'}</td></tr>`}</tbody>`;
+}
+
+async function cargar() {
+  try {
+    // Sin contraseña: se comparte por link con quien lo quiera ver (no tiene datos personales)
+    const res = API_URL ? await fetch(API_URL) : await fetch(FUENTE + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    // Se muestra todo junto recién cuando llegaron los datos (antes de dibujar, para que el mapa tenga tamaño)
+    $('pantallaCargando').hidden = true;
+    $('contenido').hidden = false;
+    render(API_URL ? prepararValidadas(json) : prepararBase(json));
+  } catch (err) {
+    $('pantallaCargando').hidden = false;
+    $('contenido').hidden = true;
+    $('ruedita').hidden = true;
+    $('cargaT').textContent = 'No se pudo leer la información (' + err.message + ')';
+    $('cargaT').className = 'carga-t error';
+    $('reintentar').hidden = false;
+  }
+}
+$('reintentar').onclick = () => location.reload();
+cargar();
+</script>
+</body>
+</html>

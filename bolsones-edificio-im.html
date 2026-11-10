@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Vaciados de bolsones edificio IM</title>
+<link rel="icon" type="image/png" href="assets/logo-ciemsa.png">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+<style>
+/* Mismo aspecto que barrios-sustentables-cerro.html, sin mapa ni cuadros por punto (es un solo lugar).
+   Su página de carga es bolsones-edificio-im-carga.html */
+:root{
+  --bg:#F7F6F3; --card:#FFFFFF; --border:#E6E2DA;
+  --text:#1A1714; --text2:#5F5A54; --text3:#9A948C;
+  --azul:#1b3f74; --rojo:#c0392b; --verde:#1baf7a;
+  --shadow:0 4px 20px rgba(26,23,20,.05),0 1px 3px rgba(26,23,20,.05);
+  --r:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+html{overflow-y:scroll;scrollbar-gutter:stable}
+body{font-family:'DM Sans',system-ui,sans-serif;color:var(--text);-webkit-font-smoothing:antialiased;
+  background:radial-gradient(circle at 12% 0%,#EDEEF9 0%,transparent 40%),radial-gradient(circle at 95% 100%,#E7F3EE 0%,transparent 40%),var(--bg);
+  background-attachment:fixed;min-height:100vh}
+button{font:inherit;color:inherit}
+.wrap{max-width:1200px;margin:0 auto;padding:1.5rem clamp(16px,2.5vw,2rem) 3rem;display:flex;flex-direction:column;gap:14px}
+.num{font-variant-numeric:tabular-nums}
+
+.barra{position:sticky;top:0;z-index:1200;background:linear-gradient(135deg,#0f172a 0%,#16213e 55%,#1b3f74 100%);color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.3);padding-top:env(safe-area-inset-top)}
+.barra-in{max-width:1200px;margin:0 auto;min-height:84px;padding:12px clamp(16px,2.5vw,2rem);display:flex;justify-content:center;align-items:center}
+.titulo{display:flex;align-items:center;gap:10px;min-width:0}
+.titulo .ico{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:28px;height:28px;font-family:'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',sans-serif;font-size:23px;line-height:28px}
+.titulo h1{font-family:'Segoe UI',Arial,sans-serif;font-size:24px;font-weight:700;letter-spacing:-.01em;line-height:1.15}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow)}
+
+/* Indicadores */
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.kpi{padding:1rem 1.1rem}
+.kpi-n{font-size:30px;font-weight:700;line-height:1.1;letter-spacing:-.02em}
+.kpi-l{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+
+/* Detalle: sin título, la tabla arranca por los encabezados. overflow:hidden recorta las cuatro esquinas redondeadas */
+.detalle{overflow:hidden}
+.tabla-wrap{overflow-x:auto}
+/* Dos columnas del mismo ancho y todo centrado */
+.tabla{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:fixed}
+.tabla th{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;text-align:center;padding:.6rem .9rem;background:#F7F6F3;border-bottom:1px solid var(--border);white-space:nowrap}
+.tabla td{padding:.6rem .9rem;border-bottom:1px solid #ECE9E3;color:var(--text2);white-space:nowrap;text-align:center}
+.tabla tbody tr:nth-child(even) td{background:#FBFAF8}
+.tabla tbody tr:hover td{background:#F3F1EC}
+.tabla tbody tr:last-child td{border-bottom:0}
+.tabla .n{font-weight:700;color:var(--text)}
+/* Textos largos (PC) y cortos (celular) de encabezados y fechas */
+.tabla .corto{display:none}
+@media (max-width:600px){
+  .tabla{font-size:12px}
+  .tabla th,.tabla td{padding:.55rem .35rem}
+  .tabla th{letter-spacing:.03em}
+  .tabla .largo{display:none}
+  .tabla .corto{display:inline}
+}
+.vacio{text-align:center;color:var(--text3);font-size:14px;padding:1.2rem}
+
+/* Mientras se leen los datos: la ruedita, igual que en la página de carga, mb y com-mvd/dashboard */
+.carga{min-height:max(260px,calc(100vh - 130px));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 16px;text-align:center}
+.ruedita{width:38px;height:38px;border:3px solid #dbe3ed;border-top-color:#2563eb;border-radius:50%;animation:girar .8s linear infinite}
+@keyframes girar{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.ruedita{animation-duration:2.4s}}
+.carga-t{color:#64748b;font-size:14px;font-weight:600}
+.carga-t.error{color:var(--rojo)}
+.btn{border:0;border-radius:12px;padding:11px 22px;font-size:15px;font-weight:700;cursor:pointer;color:#fff;background:linear-gradient(135deg,#0f172a 0%,#16213e 55%,#1b3f74 100%)}
+
+@media (max-width:760px){
+  .barra-in{padding:10px 16px;min-height:64px}
+  .titulo h1{font-size:19px}
+  .titulo .ico{width:24px;height:24px;font-size:19px;line-height:24px}
+  .kpi-n{font-size:24px}
+}
+</style>
+</head>
+<body>
+
+<header class="barra">
+  <div class="barra-in">
+    <div class="titulo">
+      <span class="ico" aria-hidden="true">♻</span>
+      <h1>Vaciados de bolsones edificio IM</h1>
+    </div>
+  </div>
+</header>
+
+<!-- Mientras se leen los datos -->
+<div class="carga" id="pantallaCargando" role="status" aria-live="polite">
+  <div class="ruedita" id="ruedita"></div>
+  <div class="carga-t" id="cargaT">Cargando información</div>
+  <button class="btn" type="button" id="reintentar" hidden>Reintentar</button>
+</div>
+
+<div class="wrap" id="contenido" hidden>
+  <div class="kpis" id="kpis"></div>
+
+  <section class="card detalle">
+    <div class="tabla-wrap"><table class="tabla" id="tabla"></table></div>
+  </section>
+</div>
+
+
+<script>
+// ── Vaciados de bolsones edificio IM ────────────────────────────────────────
+// Se cargan a mano (bolsones-edificio-im-carga.html) en la hoja "Edificio IM" de la planilla
+// "Validación Barrios Sustentables", la misma de Cerro (Apps Script en Desktop/IA/barrios-sustentables).
+// API_URL es su aplicación web; con ?p=im devuelve las filas de esa hoja con fecha y bolsones > 0.
+const API_URL = 'https://script.google.com/macros/s/AKfycbwgeDkIdZ6AUPGR_4dQS3Z24QTRThqk_9qDoi-1NTPiySEqbty06Bmo7E4U2b-KS9Em1g/exec';
+// Tiene que coincidir con TABLEROS.im.lugares del Apps Script
+const LUGAR = 'Edificio IM';
+
+const $ = id => document.getElementById(id);
+const fmt = n => (n ?? 0).toLocaleString('es-UY', { maximumFractionDigits: 1 });
+const pad = n => String(n).padStart(2, '0');
+const fHora = d => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+// Para el celular: año con dos cifras ("03/11/26 16:49")
+const fHoraCorta = d => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+// { filas: [{ edif, fGes, cant }] } → [{ fGesD, cant }], solo las de este lugar con fecha y algún bolsón,
+// de la más nueva a la más vieja
+const preparar = json => json.filas
+  .filter(f => f.edif === LUGAR)
+  .map(f => ({ fGesD: f.fGes ? new Date(f.fGes) : null, cant: Number(f.cant) }))
+  .filter(r => r.fGesD && r.cant > 0)
+  .sort((a, b) => b.fGesD - a.fGesD);
+
+function render(G) {
+  const total = G.reduce((s, r) => s + r.cant, 0);
+  const kpis = [
+    ['Bolsones vaciados', fmt(total)],
+    ['Solicitudes realizadas', fmt(G.length)],
+  ];
+  $('kpis').innerHTML = kpis.map(([l, n]) => `<div class="card kpi"><div class="kpi-l">${l}</div><div class="kpi-n num">${n}</div></div>`).join('');
+
+  $('tabla').innerHTML = `<thead><tr><th><span class="largo">Fecha de gestión</span><span class="corto">Fecha</span></th><th><span class="largo">Cantidad bolsones</span><span class="corto">Bolsones</span></th></tr></thead><tbody>${
+    G.length ? G.map(r => `<tr>
+      <td class="num"><span class="largo">${fHora(r.fGesD)}</span><span class="corto">${fHoraCorta(r.fGesD)}</span></td>
+      <td class="num n">${fmt(r.cant)}</td></tr>`).join('')
+    : `<tr><td colspan="2" class="vacio">Todavía no hay solicitudes cargadas</td></tr>`}</tbody>`;
+}
+
+async function cargar() {
+  try {
+    // Sin contraseña: se comparte por link (no tiene datos personales)
+    const res = await fetch(API_URL + '?p=im');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    if (!json.filas) throw new Error(json.error || 'respuesta inesperada');
+    $('pantallaCargando').hidden = true;
+    $('contenido').hidden = false;
+    render(preparar(json));
+  } catch (err) {
+    $('pantallaCargando').hidden = false;
+    $('contenido').hidden = true;
+    $('ruedita').hidden = true;
+    $('cargaT').textContent = 'No se pudo leer la información (' + err.message + ')';
+    $('cargaT').className = 'carga-t error';
+    $('reintentar').hidden = false;
+  }
+}
+$('reintentar').onclick = () => location.reload();
+cargar();
+</script>
+</body>
+</html>
