@@ -48,6 +48,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .seg button{border:0;background:transparent;padding:5px 13px;border-radius:7px;font-size:13px;color:var(--mute);font-weight:500}
 .seg button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
 .sp{flex:1}
+.viejo{margin-top:6px;font-size:13px;font-weight:600;letter-spacing:0;color:var(--marca)}
+.viejo[hidden]{display:none}
 .clock{position:absolute;top:12px;left:14px;z-index:500;pointer-events:none;text-shadow:0 0 6px var(--bg),0 0 12px var(--bg);font-size:40px;line-height:1;font-weight:600;letter-spacing:-.02em}
 
 
@@ -155,7 +157,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 <main class="main">
   <div class="mapbox">
     <div id="map"></div>
-    <div class="clock num" id="clock">--:--</div>
+    <div class="clock num" id="clock"><span id="hora">--:--</span><div class="viejo" id="viejo" hidden></div></div>
     <div class="mtools">
       <button class="ic" id="bTema" title="Tema claro / oscuro">◐</button>
       <button class="ic" id="bFs" title="Pantalla completa (F)">⛶</button>
@@ -185,6 +187,8 @@ const CFG={
   GRACIA:15,      // min después de la hora de entrada antes de avisar "Sin confirmar salida"
   MARGEN:30,      // "Ahora" muestra los turnos que empiezan o terminaron hace menos de esto (min)
   RITMO:90,       // ventana para medir cierres por hora (min)
+  CO:'centro-operativo.json.gz',   // archivo liviano que arma n8n cada 5 min (flujo centroOperativo1): solo asignadas y cierres desde las 18 h de ayer
+  VIEJO:15,       // min: si el archivo es más viejo, aviso debajo de la hora
   CADA_BASES:60, CADA_PLAN:120, CADA_TE:120, CADA_ASIS:1800   // segundos entre lecturas
 };
 const BASES={
@@ -429,58 +433,23 @@ async function bajar(arch,ver){
   const t=(b[0]===0x1f&&b[1]===0x8b)?await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'))).text():new TextDecoder().decode(b);
   return JSON.parse(t);
 }
-/* Se queda solo con lo que sirve: tareas Asignadas (de cualquier fecha) y cierres de hoy */
-function procesar(k,d,hoyDia){
-  const pend=[],done=[];let max=0;
-  const hoy=hoyDia-6*3600000;   // cierres desde las 18 h de ayer, por los turnos nocturnos (cada uno se queda con los de su turno)
-  if(k==='bol'){
-    const C=d.columnas,I=n=>C.indexOf(n),iT=I('transp'),iE=I('estado'),iF=I('fGes'),iLa=I('lat'),iLn=I('lng'),iD=I('dir'),iId=I('id'),iG=I('gestion'),iM=I('mun');
-    for(const r of d.registros){
-      const t=String(r[iT]||'').trim();if(!t||t==='-')continue;
-      const it={k,t,id:r[iId],la:+r[iLa]||0,ln:+r[iLn]||0,dir:String(r[iD]||''),inc:'Bolsón '+String(r[iG]||'').toLowerCase(),mun:r[iM]||''};
-      // En Bolsones la "fecha de gestión" es cuando el transportista hizo el vaciado; queda "Asignado" hasta que
-      // se carga la descarga en planta (hora) y ahí pasa a "Cerrado". Así que: con fecha de gestión = hecho a esa hora;
-      // "Asignado" sin fecha de gestión = pendiente de verdad.
-      if(r[iF]){if(r[iE]==='Asignado'||r[iE]==='Cerrado'){const f=Date.parse(r[iF]+'Z');if(f>=hoy){it.f=f;done.push(it);if(f>max)max=f}}}
-      else if(r[iE]==='Asignado')pend.push(it);
-    }
-  }else{
-    const C=d.columnas.map(norm),I=n=>C.indexOf(n),D=d.columnas.map(c=>(d.dicc||{})[c]||null);
-    const v=(r,i)=>{if(i<0)return null;const x=r[i];return D[i]&&x!=null?D[i][x]:x};
-    const iT=I('transportista'),iE=I('estado'),iF=I('fecha_resuelto'),iR=I('repetido'),iTp=I('tipo_de_reclamo'),iLa=I('latitud'),iLn=I('longitud'),
-          iD=I('direccion'),iId=k==='age'?I('id_agenda'):I('id'),iInc=I('incidente'),iM=I('municipio'),iC=I('contenedor'),iCi=I('circuito');
-    for(const r of d.registros){
-      const e=v(r,iE);if(e!=='Asignado'&&e!=='Cerrado'&&e!=='Resuelto')continue;
-      const fr=r[iF];if(e!=='Asignado'&&!(fr&&fr*1000>=hoy))continue;
-      if(String(v(r,iR)).toLowerCase()==='true'||v(r,iTp)==='CANCELADO')continue;
-      const t=String(v(r,iT)||'').trim();if(!t)continue;
-      const it={k,t,id:r[iId],la:+r[iLa]||0,ln:+r[iLn]||0,dir:String(v(r,iD)||''),inc:String(v(r,iInc)||''),mun:v(r,iM)||'',cont:v(r,iC),circ:v(r,iCi)};
-      if(e==='Asignado')pend.push(it);else{it.f=fr*1000;done.push(it);if(it.f>max)max=it.f}
-    }
-  }
-  return {pend,done,max,filas:d.registros.length};
-}
 let revisando=false;
-async function cargarBases(forzar){
+/* Bases: un solo archivo chico (~60 KB) que arma n8n cada 5 min pidiéndole al Grafana solo lo que usa el mapa.
+   Antes se bajaban las 4 bases enteras de Supabase (~16,7 MB en cada actualización). */
+async function cargarBases(){
   if(revisando)return;revisando=true;
   try{
-    const r=await fetch(CFG.SB+'actualizado.json?_='+Date.now(),{cache:'no-store'});
-    if(!r.ok)throw new Error('HTTP '+r.status+' en actualizado.json');
-    const act=await r.json(),hoy=diaDe(ahora());
+    const d=await bajar(CFG.CO,Date.now());
+    if(!d||!d.bases)throw new Error('formato desconocido en '+CFG.CO);
+    const at=wall(Date.parse(d.generado)),hoy=diaDe(ahora()),corte=hoy-6*3600000;   // cierres desde las 18 h de ayer
     for(const k of KEYS){
-      const ver=act[BASES[k].clave];if(!ver)continue;
-      const b=DATA.bases[k];
-      if(!forzar&&b&&DATA.vers[k]===ver&&b.hoy===hoy)continue;
-      try{
-        const d=await bajar(BASES[k].arch,ver),p=procesar(k,d,hoy);
-        const gen=d.generado?Date.parse(d.generado+'Z'):0;
-        // hora de los datos: la más nueva entre la subida, "generado" y el último cierre (actualizado.json a veces queda atrás)
-        p.at=Math.max(wall(Date.parse(ver)),gen||0,p.max);p.subida=wall(Date.parse(ver));p.hoy=hoy;
-        DATA.bases[k]=p;DATA.vers[k]=ver;delete DATA['err_'+k];
-      }catch(e){DATA['err_'+k]=e.message}
-      pintar();
+      const b=d.bases[k];
+      if(!b||b.err){DATA['err_'+k]=b?b.err:'no viene en el archivo';continue}   // se queda con lo último que tenía
+      const done=b.done.filter(x=>x.f>=corte);let max=0;for(const x of done)if(x.f>max)max=x.f;
+      DATA.bases[k]={pend:b.pend,done,max,filas:b.pend.length+b.done.length,at:Math.max(at,max),subida:at,hoy};
+      delete DATA['err_'+k];
     }
-    DATA.basesErr='';DATA.basesAt=Date.now();
+    DATA.generado=at;DATA.basesErr='';DATA.basesAt=Date.now();
   }catch(e){DATA.basesErr='Supabase: '+e.message}
   finally{revisando=false;pintar()}
 }
@@ -674,7 +643,11 @@ function render(){
 function barra(){
   const W=ahora(),d=new Date(W);
   const dias=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'],mes=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  $('clock').textContent=hhmm(W);
+  $('hora').textContent=hhmm(W);
+  // Aviso discreto debajo de la hora si el archivo de n8n no se actualiza (PC, VPN o n8n caídos)
+  const g=DATA.generado,v=$('viejo'),viejo=ARRANCO&&(g?W-g>CFG.VIEJO*60000:!!DATA.basesErr);
+  v.hidden=!viejo;
+  if(viejo)v.textContent=g?'datos de hace '+dur((W-g)/60000):'sin datos de las bases';
 }
 /* Indicadores: los que deberían estar trabajando ahora, cada uno en un solo grupo, así que la suma da el total. */
 function grupoK(p){
