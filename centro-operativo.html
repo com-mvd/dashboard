@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Centro Operativo</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!--
+  Centro Operativo — en qué está cada recurso planificado del turno.
+  Fuentes (todas públicas, sin login):
+    1. Planilla de seguimiento diario de transportistas (Google Sheets): quién está planificado, turno, si salió.
+    2. Planilla TAREAS ESPECIALES (Google Sheets), pestaña del día "DD/MM": tareas en proceso / aceptadas / realizadas.
+    3. Bases de Supabase (bucket público "bases"): reclamos, zona limpia, agenda y bolsones (asignados y cerrados hoy).
+  Todas las horas se manejan como "reloj de Montevideo" (ms donde los campos UTC son la hora local).
+-->
+<style>
+/* Colores de COM 2 (assets/comun.css y supervision-mapa.js), para que se vea igual que los otros mapas */
+:root{
+  --bg:#F7F6F3;--card:#FFFFFF;--ink:#1A1714;--mute:#5F5A54;--faint:#9A948C;--line:#E6E2DA;--soft:#EFEDE8;--mapa:#EFEDE8;
+  --sin:#d03b3b;--marca:#eb6834;--pocas:#b7791f;--parado:#6250d6;--ok:#1baf7a;--esp:#2a78d6;--cierre:#827b71;--off:#9A948C;
+  --rec:#2a78d6;--zl:#0e7490;--age:#6250d6;--bol:#a16207;
+  --shadow:0 4px 20px rgba(26,23,20,.05),0 1px 3px rgba(26,23,20,.05);
+}
+:root[data-theme=dark]{
+  --bg:#1e2126;--card:#272b31;--ink:#ECEAE6;--mute:#B3ADA5;--faint:#857F77;--line:#3b4048;--soft:#2e3238;--mapa:#2a2e34;
+  --sin:#ff5252;--marca:#ff8a3d;--pocas:#ffcc33;--parado:#9d7dff;--ok:#2ee88f;--esp:#3d9bff;--cierre:#b8b1a7;--off:#857F77;
+  --rec:#3d9bff;--zl:#1fd1f0;--age:#9d7dff;--bol:#ffcc33;
+  --shadow:0 4px 20px rgba(0,0,0,.35),0 1px 3px rgba(0,0,0,.3);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#1e2126;--card:#272b31;--ink:#ECEAE6;--mute:#B3ADA5;--faint:#857F77;--line:#3b4048;--soft:#2e3238;--mapa:#2a2e34;
+  --sin:#ff5252;--marca:#ff8a3d;--pocas:#ffcc33;--parado:#9d7dff;--ok:#2ee88f;--esp:#3d9bff;--cierre:#b8b1a7;--off:#857F77;
+  --rec:#3d9bff;--zl:#1fd1f0;--age:#9d7dff;--bol:#ffcc33;
+  --shadow:0 4px 20px rgba(0,0,0,.35),0 1px 3px rgba(0,0,0,.3);
+}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 "DM Sans",system-ui,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer}
+.num{font-variant-numeric:tabular-nums}
+[hidden]{display:none!important}
+
+/* ---------- barra ---------- */
+.seg{display:inline-flex;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:3px}
+.seg button{border:0;background:transparent;padding:5px 13px;border-radius:7px;font-size:13px;color:var(--mute);font-weight:500}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.sp{flex:1}
+.clock{position:absolute;top:12px;left:14px;z-index:500;pointer-events:none;text-shadow:0 0 6px var(--bg),0 0 12px var(--bg);font-size:40px;line-height:1;font-weight:600;letter-spacing:-.02em}
+
+
+/* ---------- cuerpo ---------- */
+.main{flex:1;min-height:0;display:grid;grid-template-columns:1fr 440px;gap:12px;padding:16px 18px}
+.mapbox{position:relative;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;overflow:hidden;isolation:isolate;background:var(--soft)}
+#map{position:relative;flex:1;min-height:0;background:var(--mapa)}
+/* como en COM 2: siempre las teselas claras; en oscuro se invierten */
+:root[data-theme=dark] .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(1.08) contrast(.82)}
+.mtools{position:absolute;bottom:10px;right:10px;z-index:500;display:flex;gap:4px}
+.mtools button{height:26px;padding:0 8px;border-radius:7px;border:1px solid var(--line);background:color-mix(in srgb,var(--card) 90%,transparent);font-size:11.5px;color:var(--mute)}
+.mtools button.ic{width:26px;padding:0;font-size:13px}
+.mtools button:hover{color:var(--ink)}
+.mtools button.on{color:var(--ink);border-color:var(--ink)}
+.loading{position:absolute;inset:0;z-index:600;display:grid;place-items:center;background:color-mix(in srgb,var(--bg) 70%,transparent);font-size:15px;color:var(--mute);text-align:center}
+
+.side{display:flex;flex-direction:column;min-height:0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+.sh{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.sh input{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:6px 10px;border-radius:8px;font:inherit;font-size:13px}
+.list{flex:1;overflow:auto;scrollbar-width:none}
+.list::-webkit-scrollbar,.ficha::-webkit-scrollbar{display:none}
+.it{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--soft);cursor:pointer}
+.it:hover{background:var(--soft)}
+.it.sel{background:var(--soft)}
+.it .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.it .st{font-size:12px;font-weight:650;color:var(--c);white-space:nowrap;text-align:right}
+.it .d{grid-column:1/-1;font-size:11.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.empty{padding:22px;text-align:center;color:var(--mute);font-size:13px}
+
+/* ficha */
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px;border-bottom:1px solid var(--line)}
+.k{border:1px solid var(--line);background:var(--soft);text-align:left;padding:7px 9px 6px;border-radius:10px;min-width:0}
+.k.tot{grid-column:1/-1;display:flex;align-items:baseline;gap:10px}
+.k.tot .l{font-size:13px}
+.k.tot .l small{display:inline;margin-left:8px}
+.k:hover{border-color:var(--mute)}
+.k.on{border-color:var(--c,var(--ink));box-shadow:inset 0 0 0 1px var(--c,var(--ink))}
+.k .v{font-size:32px;font-weight:650;line-height:1.05;letter-spacing:-.03em;color:var(--c,var(--ink))}
+.k .l{font-size:12px;color:var(--mute);line-height:1.2;margin-top:2px}
+.k .l small{display:block;font-size:10.5px;color:var(--faint)}
+.ficha{border-bottom:1px solid var(--line);padding:12px 14px;background:var(--soft);max-height:52%;overflow:auto}
+.ficha h3{margin:0;font-size:16px;display:flex;align-items:center;gap:8px}
+.ficha h3 .x{margin-left:auto;border:0;background:transparent;font-size:16px;color:var(--mute)}
+.badge{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:99px;color:var(--c);background:color-mix(in srgb,var(--c) 16%,transparent)}
+.kv{display:grid;grid-template-columns:108px 1fr;gap:3px 10px;font-size:12.5px;margin-top:8px}
+.kv dt{color:var(--mute)}
+.kv dd{margin:0}
+.svcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-top:10px}
+.sv{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--sc);border-radius:8px;padding:6px 9px;font-size:12px}
+.sv b{display:block;font-size:11px;color:var(--sc);letter-spacing:.06em}
+
+/* marcadores */
+.pm-w{background:none;border:0}
+.pm{width:100%;height:100%;border-radius:50%;background:var(--card);border:3px solid var(--pc);display:grid;place-items:center;font-size:14px;line-height:1;box-shadow:0 0 0 3px color-mix(in srgb,var(--pc) 25%,transparent),0 2px 6px rgba(0,0,0,.35)}
+.pm.alert{animation:ring 1.6s ease-out infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--pc) 70%,transparent),0 2px 6px rgba(0,0,0,.35)}100%{box-shadow:0 0 0 14px transparent,0 2px 6px rgba(0,0,0,.35)}}
+.leaflet-tooltip{font:12px "DM Sans",system-ui,sans-serif;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+.leaflet-tooltip-top:before{border-top-color:var(--card)}
+.pop .leaflet-popup-content-wrapper{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.4);padding:0}
+.pop .leaflet-popup-content{margin:12px 14px;font:13px/1.4 "DM Sans",system-ui,sans-serif}
+.pop .leaflet-popup-tip{background:var(--card);border:1px solid var(--line);box-shadow:none}
+.pp-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pp-h b{font-size:15px;line-height:1.2}
+.pp-h .badge{flex:none}
+.pp-s{color:var(--faint);font-size:11.5px;margin-top:2px}
+.pp dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:10px 0 0;padding-top:9px;border-top:1px solid var(--line);font-size:12.5px}
+.pp dt{color:var(--faint)}
+.pp dd{margin:0;font-weight:600;text-align:right}
+.pp-n{margin-top:8px;font-size:11px;color:var(--faint)}
+.nl{box-sizing:border-box;font:600 11.5px/17px "DM Sans",system-ui,sans-serif;padding:0 7px;white-space:nowrap;color:var(--ink);background:color-mix(in srgb,var(--card) 88%,transparent);border:1px solid var(--line);border-radius:7px;text-align:center}
+.leaflet-tooltip.lbl{padding:1px 7px;font-size:11.5px;font-weight:600;background:color-mix(in srgb,var(--card) 88%,transparent)}
+.leaflet-tooltip.lbl:before{display:none}
+.leaflet-tooltip.mlbl{background:none;border:0;box-shadow:none;font-size:14px;font-weight:700;letter-spacing:.14em;color:var(--mute);text-shadow:0 0 4px var(--bg),0 0 4px var(--bg)}
+.leaflet-tooltip.mlbl:before{display:none}
+.leaflet-control-zoom a{background:var(--card)!important;color:var(--ink)!important;border-color:var(--line)!important}
+.leaflet-control-attribution{background:color-mix(in srgb,var(--bg) 70%,transparent)!important;color:var(--faint)!important;font-size:10px}
+.leaflet-control-attribution a{color:var(--mute)!important}
+
+/* pantalla grande: un poco más de letra */
+@media (min-width:1800px){body{font-size:15px}.k .v{font-size:40px}.main{grid-template-columns:1fr 500px}.clock{font-size:48px}}
+@media (max-width:1100px){
+  body{overflow:auto;display:block}
+  .main{grid-template-columns:1fr;grid-template-rows:60vh auto}
+  .side{max-height:none}.list{overflow:visible}
+}
+@media (max-width:560px){
+  .main{padding-left:16px;padding-right:16px}
+  .clock{font-size:26px}
+}
+</style>
+</head>
+<body>
+
+<main class="main">
+  <div class="mapbox">
+    <div id="map"></div>
+    <div class="clock num" id="clock">--:--</div>
+    <div class="mtools">
+      <button class="ic" id="bTema" title="Tema claro / oscuro">◐</button>
+      <button class="ic" id="bFs" title="Pantalla completa (F)">⛶</button>
+    </div>
+    <div class="loading" id="loading">Cargando planilla, tareas especiales y bases…</div>
+  </div>
+  <aside class="side">
+    <div class="kpis" id="kpis"></div>
+    <div class="list" id="list"></div>
+  </aside>
+</main>
+
+<script>
+"use strict";
+/* ============================== CONFIGURACIÓN ============================== */
+const CFG={
+  SB:'https://srgduwdvkgqrrmhxpzlx.supabase.co/storage/v1/object/public/bases/',
+  PLAN:'1y1e4h2Tr0dLwxANuKqZWMMZLDCRzDtzkKqfZTRO8xEU',   // seguimiento diario de transportistas (primera pestaña)
+  TE:'1MgxpmNHlQTaGs_w49SRTJrIo-CYWP2JPxjvx4AgSlAc',     // TAREAS ESPECIALES, pestaña del día "DD/MM"
+  CARTO:'cb1_4dpf_1_b2ca9299be611862d5d23c88',           // clave pública del fondo de mapa (la misma de COM 2)
+  ASIS:'1utiAj4kWcpwQijBYjiUX8pAIdTVqGdjSsit50EEhxhU',   // asistencia de empresas (pestaña "Asistencia"): de ahí sale qué unidades de ZL salen y su horario típico
+  ASIS_PESTANA:'Asistencia',
+  ASIS_DIAS:28,   // se miran las últimas 4 semanas
+  GRACIA_ZL:30,   // el horario de las empresas es estimado: min de espera antes de avisar que no arrancó
+  POCAS:2,        // con 1 o 2 tareas asignadas: "Pocas tareas"
+  PARADO:60,      // min sin cerrar nada teniendo tareas: "Parado"
+  CIERRE:45,      // últimos min del turno sin tareas: "Cierre de turno" (no es alerta)
+  GRACIA:15,      // min después de la hora de entrada antes de avisar "Sin confirmar salida"
+  MARGEN:30,      // "Ahora" muestra los turnos que empiezan o terminaron hace menos de esto (min)
+  RITMO:90,       // ventana para medir cierres por hora (min)
+  CADA_BASES:60, CADA_PLAN:120, CADA_TE:120, CADA_ASIS:1800   // segundos entre lecturas
+};
+const BASES={
+  rec:{arch:'reclamos.json.gz',  clave:'reclamos',   nombre:'Reclamos',    corto:'R'},
+  zl: {arch:'zona-limpia.json.gz',clave:'zona-limpia',nombre:'Zona Limpia', corto:'Z'},
+  age:{arch:'agenda.json.gz',    clave:'agenda',     nombre:'Agenda',      corto:'A'},
+  bol:{arch:'bolsones.json',     clave:'bolsones',   nombre:'Bolsones',    corto:'B'}
+};
+const KEYS=Object.keys(BASES);
+/* Estados de un recurso planificado. o = orden en la lista; al = cuenta como alerta */
+const ST={
+  sin_tarea: {l:'Sin tarea',            c:'--sin',    o:0, al:1},
+  sin_marca: {l:'Sin confirmar salida', c:'--marca',  o:1, al:1},
+  parado:    {l:'Parado',               c:'--parado', o:2, al:1},
+  pocas:     {l:'Pocas tareas',         c:'--pocas',  o:3, al:1},
+  ok:        {l:'Trabajando',           c:'--ok',     o:4},
+  especial:  {l:'Tarea especial',       c:'--esp',    o:5},
+  te_espera: {l:'Tarea esp. por iniciar',c:'--esp',   o:6},
+  cierre:    {l:'Cierre de turno',      c:'--cierre', o:7},
+  por_entrar:{l:'Por entrar',           c:'--off',    o:8},
+  no_salio:  {l:'No salió',             c:'--off',    o:9},
+  retirado:  {l:'Se retiró',            c:'--off',    o:10},
+  termino:   {l:'Terminó turno',        c:'--off',    o:11}
+};
+const TRABAJANDO=['sin_tarea','parado','pocas','ok','especial','te_espera','cierre'];
+/* Nombres de las bases que no son un transportista (estados, zonas, derivaciones) */
+const PSEUDO=[/^(limpio|repetido|playas|en proceso|derivado|pala|hecho|pendiente|cancelado)\s*-\s*\d+$/i,/^agenda\s*-/i,/^-$/,
+  /^(capurro|cerro|la teja|malvin|bella italia|carrasco)\s*-\s*0\d\d$/i,/^regi[oó]n zona limpia/i];
+const esPseudo=t=>!t||PSEUDO.some(r=>r.test(String(t).trim()));
+
+/* ============================== UTILIDADES ============================== */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const norm=s=>String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+const load=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
+const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+/* Reloj de Montevideo: ms cuyos campos UTC son la hora local (igual que las fechas de las bases) */
+const MVD=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Montevideo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+function wall(ms){const p={};for(const x of MVD.formatToParts(new Date(ms)))p[x.type]=x.value;return Date.UTC(+p.year,+p.month-1,+p.day,+p.hour%24,+p.minute,+p.second)}
+const ahora=()=>wall(Date.now());
+const DIA=86400000;
+const diaDe=w=>Math.floor(w/DIA)*DIA;
+const minDe=w=>Math.floor((w-diaDe(w))/60000);
+const hhmm=w=>{const d=new Date(w);return pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())};
+const hm=m=>pad(Math.floor(m/60)%24)+':'+pad(Math.round(m)%60);
+function dur(min){min=Math.max(0,Math.round(min));if(min<60)return min+' min';const h=Math.floor(min/60),m=min%60;return h+' h'+(m?' '+pad(m):'')}
+function parseHM(x){const m=/(\d{1,2})\s*[:.]\s*(\d{2})/.exec(String(x||''));return m&&+m[1]<24?+m[1]*60+ +m[2]:null}
+/* primer rango horario de un texto: "TURNO DE 7:00 A 14:00", "8 a 14Hs", "06:30 - 13:20" */
+function parseRange(p){
+  const m=/(?<![\d:])(\d{1,2})(?::(\d{2}))?\s*(?:hs?|hrs|horas)?\s*(?:a|-|–|hasta)\s*(\d{1,2})(?::(\d{2}))?(?!\d)/i.exec(p||'');
+  if(!m)return null;
+  const s=+m[1]*60+(+m[2]||0),e=+m[3]*60+(+m[4]||0);
+  return (+m[1]<=23&&+m[3]<=24&&e>s)?[s,e]:null;
+}
+function parseCSV(t){
+  const rows=[];let row=[],f='',q=false;
+  for(let i=0;i<t.length;i++){
+    const c=t[i];
+    if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+    else if(c==='"')q=true;
+    else if(c===','){row.push(f);f=''}
+    else if(c==='\n'||c==='\r'){if(c==='\r'&&t[i+1]==='\n')i++;row.push(f);rows.push(row);row=[];f=''}
+    else f+=c;
+  }
+  if(f||row.length){row.push(f);rows.push(row)}
+  return rows;
+}
+
+/* ---------- nombres: la planilla dice "Virginia Mora", la base "Virgina Mora -9998" ---------- */
+const STOP=new Set(['y','e','de','del','la','las','los']);
+const limpio=t=>String(t||'').replace(/\s*-\s*\d+\s*$/,'').replace(/\s*-\s*SA\s*$/i,'').trim();
+function toks(s){return new Set(norm(limpio(s)).replace(/&/g,' ').replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(x=>x&&!STOP.has(x)))}
+function osa(a,b){
+  const m=a.length,n=b.length,d=[];
+  for(let i=0;i<=m;i++){d[i]=[i];for(let j=1;j<=n;j++)d[i][j]=i?0:j}
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++){
+    d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+    if(i>1&&j>1&&a[i-1]===b[j-2]&&a[i-2]===b[j-1])d[i][j]=Math.min(d[i][j],d[i-2][j-2]+1);
+  }
+  return d[m][n];
+}
+function near(a,b){
+  if(a===b)return true;
+  const mn=Math.min(a.length,b.length),mx=Math.max(a.length,b.length);
+  if(mn<4||mx-mn>2||/^\d+$/.test(a)||/^\d+$/.test(b))return false;
+  return osa(a,b)<=(mx>=7?2:1);
+}
+/* Parecido entre dos nombres (0 = no son el mismo): todas las palabras del nombre más corto tienen que estar en el otro */
+function parecido(A,B){
+  const [S,L]=A.size<=B.size?[A,B]:[B,A];if(!S.size)return 0;
+  let i=0;for(const x of S){for(const y of L)if(near(x,y)){i++;break}}
+  if(i<S.size||(S.size===1&&[...S][0].length<4))return 0;
+  return i/(A.size+B.size-i);
+}
+
+/* ============================== ESTADO ============================== */
+const DATA={plan:null,planAt:0,planErr:'',te:null,teAt:0,teErr:'',teTab:'',bases:{},vers:{},basesErr:'',basesAt:0};
+const UI={origen:'todos',filtro:null,sel:null,q:'',nombres:load('co_nombres',true),mun:true,fuera:false,cerrados:load('co_cerrados',{})};
+
+/* ============================== LECTURA: PLANILLAS ============================== */
+async function hoja(id,sheet){
+  const u=`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&headers=0${sheet?'&sheet='+encodeURIComponent(sheet):''}&_=${Date.now()}`;
+  const r=await fetch(u,{cache:'no-store'});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const t=await r.text();
+  if(/^\s*</.test(t))throw new Error('sin acceso (¿dejó de estar compartida?)');
+  return parseCSV(t);
+}
+/* Planilla de seguimiento: Municipio | Transportista | Planificación | Tarea inicial | (enviada) | Sale? | Hora salida | Se retira | Observaciones */
+function leerPlan(rows){
+  const out=[];let turno='Matutino',grupo='';
+  for(const r of rows){
+    const c0=String(r[0]||'').trim(),c1=String(r[1]||'').trim(),n0=norm(c0);
+    if(/turno\s+vespertino/.test(n0)){turno='Vespertino';grupo='';continue}
+    if(/turno\s+matutino/.test(n0)){turno='Matutino';grupo='';continue}
+    if(/turno\s+nocturno/.test(n0)){turno='Nocturno';grupo='';continue}
+    if(/^seguimiento/.test(n0)||norm(c1)==='transportista')continue;
+    if(c0)grupo=c0.replace(/\s+/g,' ');
+    if(!c1||/^#n\/a$/i.test(c1))continue;
+    const plan=String(r[2]||'').replace(/\s+/g,' ').trim();
+    const rg=parseRange(plan)||(turno==='Vespertino'?[780,1200]:[420,840]);
+    const sale=norm(r[5]);
+    out.push({id:'p'+out.length,nombre:c1,tok:toks(c1),turno,grupo,plan,tarea:String(r[3]||'').trim(),s:rg[0],e:rg[1],
+      sale:String(r[5]||'').trim(),noAsis:/no asisti/.test(sale),noCulmina:/no culmina/.test(sale),
+      asis:!!sale&&!/no asisti/.test(sale),entra:parseHM(r[6]),retiro:parseHM(r[7]),obs:String(r[8]||'').trim()});
+  }
+  return out;
+}
+async function cargarPlan(){
+  try{
+    const p=leerPlan(await hoja(CFG.PLAN));
+    if(!p.length)throw new Error('no se encontraron transportistas');
+    DATA.plan=p;DATA.planAt=Date.now();DATA.planErr='';MATCH.clear();
+  }catch(e){DATA.planErr='Planilla: '+e.message}
+  pintar();
+}
+/* Tareas especiales: DIAS | TIPO | BLOQUE | MUNICIPIO | TAREA | MENSAJE | DETALLE | TRANSPORTISTA | ESTADO | HORA INICIO | HORA FINAL
+   El transportista va combinado: las filas de abajo sin nombre son del mismo bloque. */
+function leerTE(rows){
+  const hi=rows.findIndex(r=>/^transportista/.test(norm(r[7]))&&/^estado/.test(norm(r[8])));
+  if(hi<0)return null;
+  const L=[];let cur='',curMun='';
+  for(const r of rows.slice(hi+1)){
+    if(/^(matutino|vespertino|nocturno)$/.test(norm(r[0]))){cur='';curMun='';continue}
+    const t=String(r[7]||'').trim(),bloque=String(r[2]||'').trim(),mun=String(r[3]||'').trim();
+    if(t)cur=t;else if(bloque)cur='';
+    if(mun)curMun=mun;else if(bloque)curMun='';   // el 2º trabajador de un barrio viene sin municipio: es el del bloque
+    r[3]=curMun;
+    if(!cur)continue;
+    const est=norm(r[8]);
+    L.push({nombre:cur,tarea:String(r[4]||'').split('\n')[0].trim()||String(r[1]||'').trim(),mun:String(r[3]||'').trim(),
+      est:/en proceso/.test(est)?'proc':/realizada/.test(est)?'real':/aceptada|envia/.test(est)?'acep':est?'otro':'plan',
+      ini:parseHM(r[9]),fin:parseHM(r[10])});
+  }
+  return L;
+}
+/* Pestaña de acopios (si existe): TRANSPORTISTA en la col. 6, HORA INICIO y HORA FINAL en 7 y 8 */
+function leerAcopios(rows){
+  const hi=rows.findIndex(r=>/^transportista/.test(norm(r[5]))&&/^hora inicio/.test(norm(r[6])));
+  if(hi<0)return [];
+  return rows.slice(hi+1).filter(r=>String(r[5]||'').trim()&&/\d/.test(r[6]||'')).map(r=>({nombre:String(r[5]).trim(),tarea:'Acopio '+String(r[2]||'').split('|')[0].trim().slice(0,40),est:String(r[7]||'').trim()?'real':'proc',ini:parseHM(r[6]),fin:parseHM(r[7])}));
+}
+async function cargarTE(){
+  const d=new Date(ahora()),dd=d.getUTCDate(),mm=d.getUTCMonth()+1;
+  const tabs=[...new Set([`${pad(dd)}/${pad(mm)}`,`${dd}/${mm}`,`${dd}/${pad(mm)}`,`${pad(dd)}/${mm}`])];
+  try{
+    let L=null,tab='';
+    for(const t of tabs){L=leerTE(await hoja(CFG.TE,t));if(L){tab=t;break}}  // si la pestaña no existe, Google devuelve la primera: se descarta
+    if(!L)throw new Error('no hay pestaña «'+tabs[0]+'»');
+    try{L=L.concat(leerAcopios(await hoja(CFG.TE,'Acopios '+tab)))}catch(e){}
+    DATA.te=L.map(x=>({...x,tok:toks(x.nombre)}));DATA.teTab=tab;DATA.teAt=Date.now();DATA.teErr='';
+  }catch(e){DATA.te=null;DATA.teErr='Tareas especiales: '+e.message}
+  pintar();
+}
+
+/* ---------- Empresas de Zona Limpia: planilla de asistencia (se completa al día siguiente) ----------
+   Pestaña "Asistencia": FECHA | TURNO | EMPRESA | ASISTENCIA | MATRÍCULA | HORA INICIO | HORA FIN | MOTIVO …
+   Con las últimas 4 semanas se arma la lista de unidades que salen hoy (las que salieron algún día como hoy) y su horario típico. */
+/* Nombre de la unidad, igual en la planilla y en las bases: "DG 1 ZONA LIMPIA - MATUTINO" y "DG1-050" -> DG1 */
+function unidad(n){
+  const x=norm(n).toUpperCase().replace(/\s*-\s*\d+\s*$/,'').trim();let m;
+  if((m=/^DG\s*(\d+)/.exec(x)))return 'DG'+m[1];
+  if((m=/^DINALI\s*(\d+)/.exec(x)))return 'DINALI'+m[1];
+  if((m=/^ROSADO\s*(\d+)/.exec(x)))return 'ROSADO'+m[1];
+  if((m=/^(?:SA|SALIR ADELANTE)\s*-?\s*B\s*(\d+)/.exec(x)))return 'SAB'+m[1];
+  if((m=/^(?:VCV|VOS CON VOZ)\s*-?\s*B\s*(\d+)/.exec(x)))return 'VCVB'+m[1];
+  if(/^(CAP|COM\s*-\s*FIDEICOMISO)\b/.test(x))return 'CAP';
+  return '';
+}
+const EMPRESA={DG:'DG',DINALI:'DINALI',ROSADO:'ROSADO',SAB:'SALIR ADELANTE',VCVB:'VOS CON VOZ',CAP:'FIDEICOMISO'};
+const titulo=s=>s.toLowerCase().replace(/(^|\s)(\p{L})/gu,(a,b,c)=>b+c.toUpperCase());
+function nombreUnidad(u,n){
+  const k=/^[A-Z]+/.exec(u)[0],num=u.slice(k.length);
+  if(k==='DINALI'){const m=/^DINALI\s*\d+\s*(.*?)\s*(?:-\s*(?:MATUTINO|VESPERTINO|NOCTURNO))?\s*$/i.exec(String(n).trim());return 'DINALI '+num+(m&&m[1]?' · '+titulo(m[1]):'')}
+  return {DG:'DG '+num,ROSADO:'Rosado '+num,SAB:'Salir Adelante B'+num,VCVB:'Vos con Voz B'+num,CAP:'CAP (fideicomiso)'}[k]||u;
+}
+const TURNO_DEF={Matutino:[360,660],Vespertino:[780,1080],Nocturno:[1260,1590]};
+function leerAsis(rows){
+  const W=ahora(),hoy=diaDe(W),lim=hoy-CFG.ASIS_DIAS*DIA,dow=new Date(W).getUTCDay();
+  const g=new Map();
+  for(const r of rows){
+    const dm=/^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(r[0]||'').trim());if(!dm)continue;
+    const d=Date.UTC(+dm[3],+dm[2]-1,+dm[1]);if(d<lim||d>=hoy)continue;
+    const emp=String(r[2]||'').trim(),u=unidad(emp);if(!u)continue;
+    const tn=norm(r[1]||emp),turno=/noct/.test(tn)?'Nocturno':/vesp/.test(tn)?'Vespertino':/mat/.test(tn)?'Matutino':'';if(!turno)continue;
+    const id=u+'|'+turno;
+    let o=g.get(id);if(!o){o={u,turno,emp,last:0,a:[],b:[],dias:new Set(),dows:new Map()};g.set(id,o)}
+    if(d>=o.last){o.last=d;o.emp=emp}
+    if(!/^(asisti|sale tarde|no culmina)/.test(norm(r[3])))continue;
+    o.dias.add(d);const wd=new Date(d).getUTCDay();o.dows.set(wd,(o.dows.get(wd)||0)+1);
+    let a=parseHM(r[5]),b=parseHM(r[6]);
+    if(a!=null&&b!=null){if(turno==='Nocturno'&&a<720)a+=1440;if(b<a)b+=1440;o.a.push(a);o.b.push(b)}
+  }
+  const med=v=>{v=[...v].sort((x,y)=>x-y);return v[Math.floor(v.length/2)]};
+  const out=[];
+  for(const o of g.values()){
+    if(o.u==='CAP')continue;   // CAP (fideicomiso) no se le asigna: solo reportan al terminar, así que no se controla
+    if(o.dias.size<3||!o.dows.get(dow))continue;   // sale poco, o nunca un día como hoy (p. ej. fines de semana)
+    const [s,e]=o.a.length>=3?[med(o.a),med(o.b)]:TURNO_DEF[o.turno];
+    const k=/^[A-Z]+/.exec(o.u)[0],num=o.u.slice(k.length);
+    out.push({id:'z:'+o.u+'|'+o.turno,zl:true,u:o.u,nombre:nombreUnidad(o.u,o.emp),corto:({SAB:'SA B',VCVB:'VCV B',DG:'DG ',DINALI:'DINALI ',ROSADO:'Rosado '}[k]||'')+num||'CAP',grupo:EMPRESA[/^[A-Z]+/.exec(o.u)[0]]||'',turno:o.turno,s,e,
+      plan:`horario típico de las últimas ${CFG.ASIS_DIAS/7} semanas (${o.a.length} días con horas)`,dias:o.dias.size});
+  }
+  return out.sort((x,y)=>x.u.localeCompare(y.u,'es',{numeric:true}));
+}
+async function cargarAsis(){
+  try{
+    const z=leerAsis(await hoja(CFG.ASIS,CFG.ASIS_PESTANA));
+    if(!z.length)throw new Error('no se encontraron unidades (¿cambió la pestaña «'+CFG.ASIS_PESTANA+'»?)');
+    DATA.zl=z;DATA.zlAt=Date.now();DATA.zlErr='';MATCH.clear();
+  }catch(e){DATA.zlErr='Asistencia empresas: '+e.message}
+  pintar();
+}
+
+/* ============================== LECTURA: BASES DE SUPABASE ============================== */
+async function bajar(arch,ver){
+  // ?v=<hora de subida>: misma URL mientras no cambie, así el navegador puede reusar lo que ya bajó
+  const r=await fetch(CFG.SB+arch+'?v='+encodeURIComponent(ver||Date.now()));
+  if(!r.ok)throw new Error('HTTP '+r.status+' en '+arch);
+  const b=new Uint8Array(await r.arrayBuffer());
+  const t=(b[0]===0x1f&&b[1]===0x8b)?await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'))).text():new TextDecoder().decode(b);
+  return JSON.parse(t);
+}
+/* Se queda solo con lo que sirve: tareas Asignadas (de cualquier fecha) y cierres de hoy */
+function procesar(k,d,hoyDia){
+  const pend=[],done=[];let max=0;
+  const hoy=hoyDia-6*3600000;   // cierres desde las 18 h de ayer, por los turnos nocturnos (cada uno se queda con los de su turno)
+  if(k==='bol'){
+    const C=d.columnas,I=n=>C.indexOf(n),iT=I('transp'),iE=I('estado'),iF=I('fGes'),iLa=I('lat'),iLn=I('lng'),iD=I('dir'),iId=I('id'),iG=I('gestion'),iM=I('mun');
+    for(const r of d.registros){
+      const t=String(r[iT]||'').trim();if(!t||t==='-')continue;
+      const it={k,t,id:r[iId],la:+r[iLa]||0,ln:+r[iLn]||0,dir:String(r[iD]||''),inc:'Bolsón '+String(r[iG]||'').toLowerCase(),mun:r[iM]||''};
+      // En Bolsones la "fecha de gestión" es cuando el transportista hizo el vaciado; queda "Asignado" hasta que
+      // se carga la descarga en planta (hora) y ahí pasa a "Cerrado". Así que: con fecha de gestión = hecho a esa hora;
+      // "Asignado" sin fecha de gestión = pendiente de verdad.
+      if(r[iF]){if(r[iE]==='Asignado'||r[iE]==='Cerrado'){const f=Date.parse(r[iF]+'Z');if(f>=hoy){it.f=f;done.push(it);if(f>max)max=f}}}
+      else if(r[iE]==='Asignado')pend.push(it);
+    }
+  }else{
+    const C=d.columnas.map(norm),I=n=>C.indexOf(n),D=d.columnas.map(c=>(d.dicc||{})[c]||null);
+    const v=(r,i)=>{if(i<0)return null;const x=r[i];return D[i]&&x!=null?D[i][x]:x};
+    const iT=I('transportista'),iE=I('estado'),iF=I('fecha_resuelto'),iR=I('repetido'),iTp=I('tipo_de_reclamo'),iLa=I('latitud'),iLn=I('longitud'),
+          iD=I('direccion'),iId=k==='age'?I('id_agenda'):I('id'),iInc=I('incidente'),iM=I('municipio'),iC=I('contenedor'),iCi=I('circuito');
+    for(const r of d.registros){
+      const e=v(r,iE);if(e!=='Asignado'&&e!=='Cerrado'&&e!=='Resuelto')continue;
+      const fr=r[iF];if(e!=='Asignado'&&!(fr&&fr*1000>=hoy))continue;
+      if(String(v(r,iR)).toLowerCase()==='true'||v(r,iTp)==='CANCELADO')continue;
+      const t=String(v(r,iT)||'').trim();if(!t)continue;
+      const it={k,t,id:r[iId],la:+r[iLa]||0,ln:+r[iLn]||0,dir:String(v(r,iD)||''),inc:String(v(r,iInc)||''),mun:v(r,iM)||'',cont:v(r,iC),circ:v(r,iCi)};
+      if(e==='Asignado')pend.push(it);else{it.f=fr*1000;done.push(it);if(it.f>max)max=it.f}
+    }
+  }
+  return {pend,done,max,filas:d.registros.length};
+}
+let revisando=false;
+async function cargarBases(forzar){
+  if(revisando)return;revisando=true;
+  try{
+    const r=await fetch(CFG.SB+'actualizado.json?_='+Date.now(),{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status+' en actualizado.json');
+    const act=await r.json(),hoy=diaDe(ahora());
+    for(const k of KEYS){
+      const ver=act[BASES[k].clave];if(!ver)continue;
+      const b=DATA.bases[k];
+      if(!forzar&&b&&DATA.vers[k]===ver&&b.hoy===hoy)continue;
+      try{
+        const d=await bajar(BASES[k].arch,ver),p=procesar(k,d,hoy);
+        const gen=d.generado?Date.parse(d.generado+'Z'):0;
+        // hora de los datos: la más nueva entre la subida, "generado" y el último cierre (actualizado.json a veces queda atrás)
+        p.at=Math.max(wall(Date.parse(ver)),gen||0,p.max);p.subida=wall(Date.parse(ver));p.hoy=hoy;
+        DATA.bases[k]=p;DATA.vers[k]=ver;delete DATA['err_'+k];
+      }catch(e){DATA['err_'+k]=e.message}
+      pintar();
+    }
+    DATA.basesErr='';DATA.basesAt=Date.now();
+  }catch(e){DATA.basesErr='Supabase: '+e.message}
+  finally{revisando=false;pintar()}
+}
+
+/* ============================== MODELO ============================== */
+const MATCH=new Map(); // nombre en la base -> [ids de la planilla]
+function emparejar(t){
+  if(MATCH.has(t))return MATCH.get(t);
+  // primero las unidades de las empresas de ZL (DG1, DINALI 4, ROSADO 2…): una por turno
+  const u=unidad(t);let ids=u?(DATA.zl||[]).filter(z=>z.u===u).map(z=>z.id):[];
+  if(!ids.length){
+    const T=toks(t);let best=0;
+    for(const p of DATA.plan||[]){const s=parecido(T,p.tok);if(s>best){best=s;ids=[p.id]}else if(s&&s===best)ids.push(p.id)}
+  }
+  MATCH.set(t,ids);return ids;
+}
+const TEM=new Map();
+function teDe(p){
+  if(!DATA.te)return null;
+  const key=p.id+'|'+DATA.teAt;if(TEM.has(key))return TEM.get(key);
+  let r=null;
+  for(const x of DATA.te){
+    if(!parecido(p.tok,x.tok))continue;
+    if(!r)r={proc:null,pend:0,real:0,lastFin:null,firstIni:null,items:[]};
+    r.items.push(x);
+    if(x.est==='proc'&&!r.proc)r.proc=x;
+    else if(x.est==='acep'||x.est==='plan')r.pend++;
+    else if(x.est==='real'){r.real++;if(x.fin!=null&&(r.lastFin==null||x.fin>r.lastFin))r.lastFin=x.fin}
+    if(x.ini!=null&&(r.firstIni==null||x.ini<r.firstIni))r.firstIni=x.ini;
+  }
+  TEM.set(key,r);return r;
+}
+function tipoDe(p){
+  if(p.zl)return /^DINALI/.test(p.u)?['🛵','Motocarro de Zona Limpia']:['🚛','Camión de Zona Limpia'];
+  if(p.per.bol)return ['🚛','Camión de bolsones'];
+  if(p.per.age||/voluminoso/i.test(p.nombre))return ['🚛','Agenda / voluminosos'];
+  return ['🛵','Motocarro'];
+}
+/* Turno de hoy en ms (reloj de Montevideo). Un nocturno que cruza la medianoche, de madrugada, es el que empezó ayer. */
+function ventana(p,W){
+  const hoy=diaDe(W),m=minDe(W);
+  const base=p.e>1440&&m<p.e-1440+CFG.MARGEN?hoy-DIA:hoy;
+  p.S=base+p.s*60000;p.E=base+p.e*60000;
+}
+/* Si un mismo nombre de la base corresponde a varios turnos (DG1 hace matutino, vespertino y nocturno), cada tarea va al turno más cercano a su hora */
+const distV=(p,t)=>t<p.S?p.S-t:t>p.E?t-p.E:0;
+function elegir(cands,t){let b=cands[0],bd=Infinity;for(const p of cands){const d=distV(p,t);if(d<bd){bd=d;b=p}}return b}
+function armar(){
+  const W=ahora(),hoy=diaDe(W),m=minDe(W);
+  const nuevo=p=>({...p,pend:[],done:[],per:{},base:new Set()});
+  const P=(DATA.plan||[]).map(nuevo).concat((DATA.zl||[]).map(nuevo));
+  for(const p of P)ventana(p,W);
+  const byId=new Map(P.map(p=>[p.id,p]));
+  const fuera=new Map();
+  const reg=(p,k,it,tipo)=>{p[tipo].push(it);p.base.add(it.t);(p.per[k]||(p.per[k]={pend:0,done:0,last:0}))[tipo]++;if(tipo==='done'&&it.f>p.per[k].last)p.per[k].last=it.f};
+  for(const k of KEYS){
+    const b=DATA.bases[k];if(!b)continue;
+    const add=(it,tipo)=>{
+      if(esPseudo(it.t)||unidad(it.t)==='CAP')return;   // CAP no se controla
+      const cands=emparejar(it.t).map(i=>byId.get(i)).filter(Boolean);
+      if(!cands.length){
+        if(tipo==='done'&&it.f<hoy)return;   // de ayer a la noche: solo cuenta para un turno nocturno
+        let f=fuera.get(it.t);
+        if(!f){f={id:'f:'+it.t,nombre:limpio(it.t),fuera:true,pend:[],done:[],per:{},base:new Set()};fuera.set(it.t,f)}
+        reg(f,k,it,tipo);return;
+      }
+      const t=tipo==='done'?it.f:W,p=elegir(cands,t);
+      if(tipo==='done'&&distV(p,t)>60*60000)return;   // cierre fuera de su turno (p. ej. de ayer)
+      reg(p,k,it,tipo);
+    };
+    for(const it of b.pend)add(it,'pend');
+    for(const it of b.done)add(it,'done');
+  }
+  for(const p of P)juzgar(p,W,hoy,m);
+  for(const f of fuera.values())posicion(f);
+  // Sin nada con coordenadas en las bases (bloques, barrios, recién salidos): al centro de su municipio, repartidos en un círculo
+  const porMun={};
+  for(const p of P){
+    if(p.pos)continue;
+    const mun=munDe(p);if(!mun)continue;
+    (porMun[mun]||(porMun[mun]=[])).push(p);
+  }
+  for(const mun in porMun){
+    const c=centroMun(mun),arr=porMun[mun];
+    arr.forEach((p,i)=>{const a=i/arr.length*2*Math.PI,r=arr.length>1?.007:0;p.pos=[c[0]+r*Math.sin(a),c[1]+r*1.2*Math.cos(a)];p.approx='mun';p.mun=mun});
+  }
+  return {P,fuera:[...fuera.values()],W,m};
+}
+const munKey=s=>{const x=String(s||'').toUpperCase().trim();if(MUNI_GEO&&MUNI_GEO[x])return x;const m=/^(CH|[A-G])\b/.exec(x);return m&&MUNI_GEO&&MUNI_GEO[m[1]]?m[1]:''};
+function munDe(p){
+  // Primero dónde anda según Tareas especiales: la que está haciendo, si no la última que terminó, si no la próxima.
+  if(p.te){
+    const it=p.te.items,km=x=>x&&munKey(x.mun);
+    const proc=it.find(x=>x.est==='proc'&&km(x));if(proc)return km(proc);
+    const real=it.filter(x=>x.est==='real'&&km(x)).sort((a,b)=>(b.fin??b.ini??0)-(a.fin??a.ini??0))[0];if(real)return km(real);
+    const sig=it.find(x=>km(x));if(sig)return km(sig);
+  }
+  const g=munKey(p.grupo);if(g)return g;
+  for(const x of p.pend)if(munKey(x.mun))return munKey(x.mun);
+  return '';
+}
+const CMUN={};
+function centroMun(id){
+  if(CMUN[id])return CMUN[id];
+  let best=null;for(const pol of MUNI_GEO[id])if(!best||pol[0].length>best.length)best=pol[0];
+  let la=0,ln=0;for(const [x,y] of best){la+=y;ln+=x}
+  return CMUN[id]=[la/best.length,ln/best.length];
+}
+function posicion(p){
+  let last=null;for(const d of p.done)if(d.la&&(!last||d.f>last.f))last=d;
+  if(last){p.pos=[last.la,last.ln];p.lastF=last.f;p.approx=false;return}
+  let n=0,la=0,ln=0;for(const x of p.pend)if(x.la){la+=x.la;ln+=x.ln;n++}
+  p.pos=n?[la/n,ln/n]:null;p.approx=!!n;
+}
+/* Agenda/voluminosos y bolsones: no tienen "poca tarea" (o tienen tarea o no) */
+const esAgBol=p=>!p.zl&&(p.per.bol||p.per.age||/voluminoso/i.test(p.nombre));
+function juzgar(p,W,hoy,m){
+  posicion(p);
+  const te=p.te=p.zl?null:teDe(p);
+  // hora de "ahora" para este recurso: la de la base más atrasada en la que tiene tareas (no se le cuenta como parado el atraso de la base)
+  let ref=W;for(const k in p.per){const b=DATA.bases[k];if(b)ref=Math.min(ref,b.at)}
+  p.ref=ref;
+  const lastDone=p.done.reduce((x,d)=>Math.max(x,d.f),0);
+  const cand=[];
+  if(lastDone)cand.push((ref-lastDone)/60000);
+  if(te){if(te.proc&&te.proc.ini!=null)cand.push(m-te.proc.ini);if(te.lastFin!=null)cand.push(m-te.lastFin)}
+  if(p.entra!=null&&p.entra<=m)cand.push(m-p.entra);
+  p.idle=cand.length?Math.max(0,Math.min(...cand)):null;
+  p.lastDone=lastDone;
+  const nW=p.done.filter(d=>d.f>=ref-CFG.RITMO*60000).length;
+  p.rate=nW>=3?nW/(CFG.RITMO/60):0;
+  const hizoAlgo=p.done.length>0||!!(te&&(te.proc||te.real));
+  const salio=p.asis||hizoAlgo;
+  p.salio=salio;
+  const n=p.pend.length,min=x=>x/60000;
+  const gracia=p.zl?CFG.GRACIA_ZL:CFG.GRACIA;   // el horario de las empresas es estimado: se espera un poco más
+  const cerrando=p.zl&&p.idle!=null&&p.idle<=CFG.PARADO;
+  let st;
+  // La planilla manda: si dice "No asistió" no salió, aunque en Tareas especiales figure algo (se avisa en la ficha)
+  p.contradice=p.noAsis&&hizoAlgo;
+  if(p.noAsis)st='no_salio';
+  else if(p.retiro!=null||p.noCulmina)st='retirado';
+  else if(W>p.E&&!cerrando)st='termino';   // una empresa que sigue cerrando después de su hora típica sigue en calle
+  else if(!salio)st=W>=p.S+gracia*60000?'sin_marca':'por_entrar';
+  else if(te&&te.proc)st='especial';
+  else if(n===0){
+    if(te&&te.pend)st=te.lastFin!=null&&m-te.lastFin>CFG.PARADO?'parado':'te_espera';   // tiene tareas especiales por hacer: si hace rato que no arranca ninguna, está parado
+    else if(cerrando)st='ok';   // las empresas de ZL cierran contenedores sin tenerlos asignados: si vienen cerrando, trabajan
+    else st=min(p.E-W)<=CFG.CIERRE?'cierre':'sin_tarea';
+  }
+  else if(p.idle!=null&&p.idle>CFG.PARADO&&min(W-p.S)>CFG.PARADO)st='parado';
+  else if(n<=CFG.POCAS&&!cerrando&&!esAgBol(p))st='pocas';   // agenda y bolsones: con 1 o más ya están con tarea
+  else st='ok';
+  p.st=st;
+}
+/* Qué recursos se miran: los que deberían estar trabajando ahora (dentro de su horario) y los que siguen en calle pasada su hora */
+function enVista(p,W){
+  return (W>=p.S&&W<=p.E)||TRABAJANDO.includes(p.st);
+}
+function detalle(p){
+  const S=p.st,est=p.zl?'~':'';
+  if(S==='no_salio')return (p.contradice?'⚠ pero figura con tareas hoy · ':'')+(p.obs||'—');
+  if(S==='retirado')return (p.retiro!=null?'a las '+hm(p.retiro):'')+(p.obs?' · '+p.obs:'');
+  if(S==='termino')return 'turno '+est+hm(p.s)+'–'+est+hm(p.e);
+  if(S==='por_entrar')return 'entra '+est+hm(p.s);
+  if(S==='sin_marca')return p.zl?'suele salir '+hm(p.s)+' · sin cierres todavía':'debía entrar '+hm(p.s)+' · nada en la planilla';
+  if(S==='especial')return p.te.proc.tarea+(p.te.proc.ini!=null?' · desde '+hm(p.te.proc.ini):'');
+  if(S==='te_espera')return (p.te.items.find(x=>x.est==='acep'||x.est==='plan')||{}).tarea||'';
+  if(S==='sin_tarea')return p.idle!=null?'sin tareas · últ. actividad hace '+dur(p.idle):'sin tareas asignadas';
+  if(S==='parado')return p.pend.length?'hace '+dur(p.idle)+' sin cerrar · '+p.pend.length+' asignadas':'hace '+dur(p.idle)+' sin actividad · '+p.te.pend+' tarea'+(p.te.pend===1?'':'s')+' especial'+(p.te.pend===1?'':'es')+' por hacer';
+  if(S==='cierre')return 'termina '+est+hm(p.e);
+  return (p.lastDone?'último cierre '+hhmm(p.lastDone):'sin cierres aún')+(p.rate?' · '+Math.round(p.rate)+'/h':'');
+}
+const corto=n=>{const w=String(n).split(/\s+/);return w.length>2&&!/\by\b|&/i.test(n)?w[0]+' '+w[w.length-1]:n};
+
+/* ============================== PINTAR ============================== */
+let MODEL=null,pend=false;
+// setTimeout y no requestAnimationFrame: este último se frena con la pestaña en segundo plano
+function pintar(){if(pend)return;pend=true;setTimeout(()=>{pend=false;try{render()}catch(e){console.error(e)}},30)}
+function render(){
+  barra();
+  if(!DATA.plan){$('loading').hidden=false;$('loading').textContent=DATA.planErr||'Cargando planilla, tareas especiales y bases…';return}
+  const listo=KEYS.every(k=>DATA.bases[k]||DATA['err_'+k])||DATA.basesErr;
+  $('loading').hidden=!!listo;
+  if(!listo)$('loading').innerHTML='Bajando las bases de Supabase…<br><small>'+KEYS.map(k=>BASES[k].nombre+(DATA.bases[k]?' ✓':' …')).join(' · ')+'</small>';
+  MODEL=armar();
+  const vis=MODEL.P.filter(p=>enVista(p,MODEL.W));
+  kpis(vis);
+  lista(vis);
+  mapa(vis);
+}
+function barra(){
+  const W=ahora(),d=new Date(W);
+  const dias=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'],mes=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  $('clock').textContent=hhmm(W);
+}
+/* Indicadores: los que deberían estar trabajando ahora, cada uno en un solo grupo, así que la suma da el total. */
+function grupoK(p){
+  const s=p.st;
+  if(s==='no_salio'||s==='retirado')return 'inasis';   // "No asistió" o se retiró antes ("No culmina la jornada")
+  if(s==='sin_marca'||s==='por_entrar')return 'sinconf'; // pasó su hora de entrada sin marca en la planilla ni actividad
+  if(['ok','especial','te_espera','cierre'].includes(s))return 'con';
+  return s;   // pocas, sin_tarea, parado
+}
+function kpis(vis){
+  const c=g=>vis.filter(p=>grupoK(p)===g).length,nSin=c('sin_tarea');
+  const k=(id,l,n,col,cls='')=>`<button class="k ${cls} ${UI.filtro===id?'on':''}" data-f="${id}" style="${col?'--c:var('+col+')':''}"><div class="v num">${n}</div><div class="l">${l}</div></button>`;
+  $('kpis').innerHTML=
+    k('todos','Deberían estar trabajando ahora',vis.length,'','tot')+
+    k('con','Con tarea',c('con'),'--ok')+k('inasis','Inasistencia',c('inasis'),'--mute')+k('sinconf','Sin confirmar',c('sinconf'),'--marca')+
+    k('parado','Parados',c('parado'),'--parado')+k('pocas','Poca tarea',c('pocas'),'--pocas')+k('sin_tarea','Sin tarea',nSin,'--sin');
+  $('kpis').querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{UI.filtro=UI.filtro===b.dataset.f||b.dataset.f==='todos'?null:b.dataset.f;UI.sel=null;render()});
+}
+const FILTROS={};for(const g of ['con','inasis','sinconf','parado','pocas','sin_tarea'])FILTROS[g]=p=>grupoK(p)===g;
+const filtrados=vis=>{const q=norm(UI.q);return vis.filter(p=>(!UI.filtro||FILTROS[UI.filtro](p))&&(!q||norm(p.nombre).includes(q)||norm(p.grupo).includes(q)))};
+function chipsSvc(p){const ks=KEYS.filter(k=>p.per[k]);return ks.length?'<span class="chs">'+ks.map(k=>`<i style="--sc:var(--${k})" title="${BASES[k].nombre}">${BASES[k].corto}</i>`).join('')+'</span>':''}
+function fila(p){
+  const s=ST[p.st]||{l:'Con actividad',c:'--off'};
+  return `<div class="it" data-id="${esc(p.id)}" style="--c:var(${s.c})">
+    <div class="n">${esc(p.nombre)}</div><div class="st">${s.l}</div>
+    <div class="d">${esc(p.fuera?(p.done.length?'último cierre '+hhmm(Math.max(...p.done.map(d=>d.f))):'sin cierres hoy'):detalle(p))}</div></div>`;
+}
+/* Debajo de los indicadores: solo los que necesitan atención (o, si se tocó un indicador, los de ese grupo), en una lista simple */
+function lista(vis){
+  const ord=(a,b)=>ST[a.st].o-ST[b.st].o||(b.idle??-1)-(a.idle??-1)||a.nombre.localeCompare(b.nombre);
+  const arr=filtrados(vis).filter(p=>UI.filtro||ST[p.st].al).sort(ord);
+  const box=$('list'),sc=box.scrollTop;
+  box.innerHTML=arr.length?arr.map(fila).join(''):`<div class="empty">${UI.filtro?'No hay recursos en este grupo.':'✓ Todos los que deberían estar trabajando tienen tarea.'}</div>`;
+  box.scrollTop=sc;
+  box.querySelectorAll('[data-id]').forEach(r=>r.onclick=()=>{const m=MK.get(r.dataset.id);if(!m)return;if(POP===r.dataset.id){m.closePopup();return}MAP.panTo(m.getLatLng());m.openPopup()});
+  marcarFila();
+}
+const buscar=id=>MODEL&&(MODEL.P.find(p=>p.id===id)||MODEL.fuera.find(f=>f.id===id));
+function ficha(){
+  const el=$('ficha'),p=UI.sel&&buscar(UI.sel);
+  if(!p){el.hidden=true;return}
+  el.hidden=false;
+  const s=ST[p.st]||{l:'Fuera de planilla',c:'--off'};
+  const te=p.te;
+  const rows=[];
+  if(p.zl){
+    rows.push(['Turno',`${p.turno} · ~${hm(p.s)} a ~${hm(p.e)}`]);
+    rows.push(['Empresa',p.grupo]);
+    rows.push(['Horario',`estimado: ${p.plan}; salió ${p.dias} días en las últimas ${CFG.ASIS_DIAS/7} semanas`]);
+    rows.push(['Hoy','La asistencia de las empresas se carga al día siguiente: hoy se ve por los cierres en las bases']);
+  }else if(!p.fuera){
+    rows.push(['Turno',`${p.turno} · ${hm(p.s)} a ${hm(p.e)}`]);
+    rows.push(['Grupo',p.grupo||'—']);
+    rows.push(['Tarea inicial',p.tarea||'—']);
+    rows.push(['Planilla',(p.sale||'sin marcar')+(p.entra!=null?' · salió '+hm(p.entra):'')+(p.retiro!=null?' · se retira '+hm(p.retiro):'')]);
+    if(p.obs)rows.push(['Observaciones',p.obs]);
+    if(p.contradice)rows.push(['⚠ Revisar','La planilla dice «No asistió» pero tiene tareas especiales o cierres hoy']);
+    if(te){
+      rows.push(['Tarea especial',te.proc?`<b>En proceso:</b> ${esc(te.proc.tarea)}${te.proc.ini!=null?' · desde '+hm(te.proc.ini):''}`:'Ninguna en proceso']);
+      rows.push(['',`${te.real} realizada${te.real===1?'':'s'}${te.lastFin!=null?' (última '+hm(te.lastFin)+')':''} · ${te.pend} por hacer`]);
+    }else rows.push(['Tarea especial',DATA.te?'No figura en la pestaña del día':'—']);
+  }
+  rows.push(['En las bases',p.base.size?[...p.base].map(esc).join(', '):'No aparece hoy']);
+  if(p.idle!=null&&!p.fuera)rows.push(['Última actividad','hace '+dur(p.idle)]);
+  const svcs=KEYS.filter(k=>p.per[k]).map(k=>`<div class="sv" style="--sc:var(--${k})"><b>${BASES[k].nombre.toUpperCase()}</b>${p.per[k].pend} asignadas · ${p.per[k].done} cerradas${p.per[k].last?'<br>último cierre '+hhmm(p.per[k].last):''}</div>`).join('');
+  el.innerHTML=`<h3>${tipoDe(p)[0]} ${esc(p.nombre)} <span class="badge" style="--c:var(${s.c})">${s.l}</span><button class="x" title="Cerrar">✕</button></h3>
+    <dl class="kv">${rows.map(([a,b])=>`<dt>${a}</dt><dd>${a==='Tarea especial'||a==='En las bases'?b:esc(b)}</dd>`).join('')}</dl>${svcs?`<div class="svcs">${svcs}</div>`:''}`;
+  el.querySelector('.x').onclick=()=>{UI.sel=null;fitKey='';render()};
+}
+
+/* ============================== MAPA ============================== */
+let MAP=null,TILE=null,TILEDARK=null,LAY=null,MUNL=null,fitKey='';
+const isDark=()=>{const t=document.documentElement.dataset.theme;return t?t==='dark':matchMedia('(prefers-color-scheme:dark)').matches};
+const cv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function mapa(vis){
+  if(!window.L){$('map').innerHTML='<div class="empty">No se pudo cargar el mapa (falta conexión a internet).</div>';return}
+  if(!MAP){
+    MAP=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true,maxZoom:18}).setView([-34.86,-56.17],12);
+    MAP.createPane('muni').style.zIndex=350;
+    MAP.createPane('etq').style.zIndex=650;MAP.getPane('etq').style.pointerEvents='none';
+    MUNL=L.layerGroup().addTo(MAP);LAY=L.layerGroup().addTo(MAP);
+    let zt;MAP.on('moveend',()=>{clearTimeout(zt);zt=setTimeout(render,120)});
+    let rt;new ResizeObserver(()=>{MAP.invalidateSize();clearTimeout(rt);rt=setTimeout(()=>{fitKey='';render()},250)}).observe($('map'));
+  }
+  const dark=isDark();
+  if(TILEDARK!==dark){
+    if(TILE)MAP.removeLayer(TILE);
+    TILE=L.tileLayer(`https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CFG.CARTO}`,{subdomains:'abcd',maxZoom:19,attribution:'© OpenStreetMap · © CARTO'}).addTo(MAP);
+    TILEDARK=dark;
+  }
+  // municipios
+  MUNL.clearLayers();
+  if(UI.mun&&MUNI_GEO)for(const id in MUNI_GEO){
+    L.polygon(MUNI_GEO[id].map(p=>p.map(r=>r.map(([x,y])=>[y,x]))),{pane:'muni',interactive:false,color:cv('--mute'),weight:2.2,opacity:.9,fill:true,fillColor:cv('--mute'),fillOpacity:.04}).addTo(MUNL);
+  }
+  PINTANDO=true;MK.clear();LAY.clearLayers();
+  const L2=filtrados(vis).filter(p=>p.pos&&TRABAJANDO.includes(p.st));
+  const sel=UI.sel&&buscar(UI.sel);
+  const pts=[],selPts=[];
+  // recorrido del seleccionado: cerrado hoy (verde, numerado por orden) y asignado (azul)
+  if(sel){
+    const ok=cv('--ok'),blu=cv('--rec'),card=cv('--card');
+    [...sel.done].filter(d=>d.la).sort((a,b)=>a.f-b.f).forEach((d,i)=>{
+      L.circleMarker([d.la,d.ln],{radius:6,color:card,weight:1.5,fillColor:ok,fillOpacity:.95}).bindTooltip(`<b>✔ ${i+1} · cerrado ${hhmm(d.f)}</b> · ${BASES[d.k].nombre}<br>${esc(d.inc)}${d.cont?' · cont. '+esc(d.cont):''}<br>${esc(d.dir.split(',')[0])}`,{direction:'top'}).addTo(LAY);
+      selPts.push([d.la,d.ln]);
+    });
+    for(const x of sel.pend)if(x.la){
+      L.circleMarker([x.la,x.ln],{radius:6,color:blu,weight:2.5,fillColor:card,fillOpacity:1}).bindTooltip(`<b>◔ Asignado</b> · ${BASES[x.k].nombre}<br>${esc(x.inc)}${x.cont?' · cont. '+esc(x.cont):''}<br>${esc(x.dir.split(',')[0])}`,{direction:'top'}).addTo(LAY);
+      selPts.push([x.la,x.ln]);
+    }
+  }
+  const lbls=[],obst=[];
+  const marker=(p,col,alert,op)=>{
+    const s=UI.sel===p.id,sz=s?40:(p.fuera?22:30),ic=tipoDe(p)[0];
+    const m=L.marker(p.pos,{icon:L.divIcon({className:'pm-w',html:`<div class="pm${p.approx?' ap':''}${alert?' alert':''}" style="--pc:${col};opacity:${op};font-size:${p.fuera?11:s?18:14}px"><span>${ic}</span></div>`,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]}),keyboard:false,zIndexOffset:s?2000:alert?1000:0});
+    m.bindPopup(()=>popHtml(p),{className:'pop',closeButton:false,maxWidth:320,minWidth:230,offset:[0,-sz/2+6],autoPanPadding:[24,24]});
+    m.on('popupopen',()=>{POP=p.id;marcarFila()});m.on('popupclose',()=>{if(!PINTANDO){POP=null;marcarFila()}});
+    MK.set(p.id,m);
+    obst.push({pos:p.pos,sz});
+    if(!p.fuera&&['pocas','sin_tarea','parado'].includes(p.st)||UI.sel===p.id)lbls.push({p,sz,txt:p.corto||corto(p.nombre)});   // nombre solo a los que necesitan atención (y al seleccionado)
+    m.addTo(LAY);pts.push(p.pos);if(s)selPts.push(p.pos);
+  };
+  if(UI.fuera&&!UI.filtro)for(const f of MODEL.fuera)if(f.pos)marker(f,cv('--off'),false,sel&&sel!==f?.3:.85);
+  for(const p of L2)marker(p,cv(grupoK(p)==='con'?'--ok':ST[p.st].c),   // en el mapa solo 4 colores: con tarea (verde), poca (amarillo), parado (violeta), sin tarea (rojo)
+    ['sin_tarea','pocas','parado'].includes(p.st),sel&&sel!==p?.35:1);
+  const key=UI.sel+'|'+UI.filtro+'|'+pts.length;   // vuelve a encuadrar cuando cambia cuántos hay en el mapa (llega una fuente, alguien sale o termina)
+  if(key!==fitKey&&(selPts.length||pts.length)){
+    fitKey=key;
+    MAP.fitBounds(L.latLngBounds(selPts.length?selPts:pts),{padding:[50,50],maxZoom:selPts.length>1?16:selPts.length?14:13});
+  }
+  etiquetas(lbls,obst);
+  if(POP&&MK.has(POP))MK.get(POP).openPopup();
+  PINTANDO=false;
+}
+
+/* Nombres de todos los recursos, a cualquier zoom, sin encimarse: cada etiqueta busca el primer lugar libre alrededor de su marcador
+   (derecha, izquierda, arriba, abajo, diagonales, cada vez más lejos). Si quedó lejos, una rayita la une al marcador. */
+let CTX=null;
+/* Etiqueta al hacer clic en un recurso: solo lo útil */
+let POP=null,PINTANDO=false;const MK=new Map();
+function marcarFila(){document.querySelectorAll('#list .it').forEach(r=>r.classList.toggle('sel',r.dataset.id===POP))}
+function popHtml(p){
+  const st=ST[p.st]||{l:'Fuera de planilla',c:'--off'};
+  const col=p.fuera?'--off':grupoK(p)==='con'?'--ok':st.c,est=p.zl?'~':'';
+  const fil=[];
+  if(!p.fuera)fil.push(['Horario',est+hm(p.s)+' – '+est+hm(p.e)]);
+  fil.push(['Asignadas',p.pend.length]);
+  const ult=p.done.reduce((x,d)=>Math.max(x,d.f),0);
+  fil.push(['Cerradas hoy',p.done.length+(ult?' · última '+hhmm(ult):'')]);
+  if(['parado','sin_tarea'].includes(p.st)&&p.idle!=null)fil.push(['Sin actividad hace',dur(p.idle)]);
+  if(p.te&&(p.te.proc||p.te.real||p.te.pend))fil.push(['Tareas especiales',[p.te.real?p.te.real+' hecha'+(p.te.real===1?'':'s'):'',p.te.proc?'1 en curso':'',p.te.pend?p.te.pend+' por hacer':''].filter(Boolean).join(' · ')]);
+  if(p.te&&p.te.proc)fil.push(['En curso',esc(p.te.proc.tarea)]);
+  const ubic=p.approx==='mun'?'Ubicación aproximada: municipio '+esc(p.mun):p.approx?'Ubicación aproximada: centro de sus tareas':'';
+  return `<div class="pp" style="--c:var(${col})"><div class="pp-h"><b>${esc(p.nombre)}</b><span class="badge">${st.l}</span></div>`+
+    `<div class="pp-s">${tipoDe(p)[1].replace(/ de Zona Limpia$/,'')}</div>`+
+    `<dl>${fil.map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>`+(ubic?`<div class="pp-n">${ubic}</div>`:'')+`</div>`;
+}
+function etiquetas(arr,obst){
+  if(!arr.length)return;
+  CTX=CTX||document.createElement('canvas').getContext('2d');
+  CTX.font='600 11.5px "DM Sans",system-ui,sans-serif';
+  const size=MAP.getSize(),occ=[];
+  const libre=a=>a.x>=2&&a.y>=2&&a.x2<=size.x-2&&a.y2<=size.y-2&&!occ.some(b=>a.x<b.x2&&a.x2>b.x&&a.y<b.y2&&a.y2>b.y);
+  const mp=$('map').getBoundingClientRect();
+  for(const el of [$('clock'),document.querySelector('.mtools')]){const ck=el.getBoundingClientRect();occ.push({x:ck.left-mp.left-4,y:ck.top-mp.top-4,x2:ck.right-mp.left+4,y2:ck.bottom-mp.top+4})}
+  for(const o of obst){const c=MAP.latLngToContainerPoint(o.pos),r=o.sz/2;occ.push({x:c.x-r,y:c.y-r,x2:c.x+r,y2:c.y+r})}   // todos los marcadores, no solo los que llevan nombre
+  for(const o of arr)o.c=MAP.latLngToContainerPoint(o.p.pos);
+  const pri=st=>({sin_tarea:0,parado:1,pocas:2,sin_marca:3})[st]??4;
+  arr.sort((a,b)=>pri(a.p.st)-pri(b.p.st));
+  const line=cv('--mute');
+  for(const o of arr){
+    const w=Math.ceil(CTX.measureText(o.txt).width)+16,h=19,r=o.sz/2+2,{x,y}=o.c;
+    let box=null,lejos=false;
+    for(let k=0;k<16&&!box;k++){
+      const d=k*12,dg=(r+d)*.72;
+      const cands=[[x+r+d,y-h/2],[x-r-d-w,y-h/2],[x-w/2,y-r-d-h],[x-w/2,y+r+d],[x+dg,y-dg-h],[x-dg-w,y-dg-h],[x+dg,y+dg],[x-dg-w,y+dg]];
+      if(k>2)for(let t=0;t<16;t++){const an=t/16*2*Math.PI,R=r+d+8;cands.push([x+R*Math.cos(an)-w/2,y+R*Math.sin(an)-h/2])}
+      for(const [lx,ly] of cands){const a={x:lx,y:ly,x2:lx+w,y2:ly+h};if(libre(a)){box=a;lejos=k>1;break}}
+    }
+    if(!box)continue;   // no hay ningún lugar libre cerca: el nombre se ve al pasar el mouse o al acercar
+    occ.push(box);
+    if(lejos){
+      const px=Math.max(box.x,Math.min(x,box.x2)),py=Math.max(box.y,Math.min(y,box.y2));
+      L.polyline([o.p.pos,MAP.containerPointToLatLng([px,py])],{pane:'etq',color:line,weight:1,opacity:.6,interactive:false}).addTo(LAY);
+    }
+    L.marker(MAP.containerPointToLatLng([box.x,box.y]),{pane:'etq',interactive:false,keyboard:false,
+      icon:L.divIcon({className:'nl',html:esc(o.txt),iconSize:[w,h],iconAnchor:[0,0]})}).addTo(LAY);
+  }
+}
+
+/* ============================== CONTROLES ============================== */
+document.documentElement.dataset.theme=load('co_tema','dark');
+$('bTema').onclick=()=>{const r=document.documentElement;r.dataset.theme=r.dataset.theme==='dark'?'light':'dark';save('co_tema',r.dataset.theme);render()};
+const fs=()=>{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});else document.documentElement.requestFullscreen?.().catch(()=>{})};
+$('bFs').onclick=fs;
+addEventListener('keydown',e=>{if((e.key==='f'||e.key==='F')&&!/INPUT|TEXTAREA/.test(document.activeElement?.tagName||''))fs();if(e.key==='Escape'&&MAP)MAP.closePopup()});
+document.addEventListener('fullscreenchange',()=>setTimeout(()=>MAP&&MAP.invalidateSize(),200));
+
+/* ============================== ARRANQUE ============================== */
+/* Límites oficiales de los municipios de Montevideo (IM), simplificados: {mun:[polígono:[anillo:[[lon,lat]…]]]} */
+const MUNI_GEO=/*MUNI_GEO*/{"CH":[[[[-56.1488,-34.8871],[-56.1476,-34.8888],[-56.142,-34.8868],[-56.138,-34.8866],[-56.1271,-34.8952],[-56.1216,-34.9004],[-56.1231,-34.9021],[-56.1224,-34.903],[-56.1228,-34.9034],[-56.1223,-34.9038],[-56.123,-34.9041],[-56.1231,-34.9047],[-56.1245,-34.9053],[-56.1243,-34.9055],[-56.1258,-34.906],[-56.1257,-34.9065],[-56.1249,-34.9067],[-56.1254,-34.9073],[-56.1246,-34.9073],[-56.1254,-34.9074],[-56.1255,-34.9071],[-56.1264,-34.9094],[-56.1255,-34.9075],[-56.1261,-34.9071],[-56.1257,-34.9066],[-56.1258,-34.906],[-56.1274,-34.906],[-56.1279,-34.9064],[-56.131,-34.9051],[-56.1317,-34.9055],[-56.1318,-34.9063],[-56.1326,-34.907],[-56.1326,-34.9076],[-56.1322,-34.9077],[-56.1331,-34.9085],[-56.133,-34.909],[-56.1319,-34.9092],[-56.1323,-34.9095],[-56.132,-34.9099],[-56.131,-34.9096],[-56.1306,-34.9084],[-56.131,-34.9096],[-56.1305,-34.9095],[-56.1301,-34.9085],[-56.1305,-34.9095],[-56.13,-34.9095],[-56.1296,-34.9085],[-56.1302,-34.9095],[-56.1299,-34.9099],[-56.1276,-34.9091],[-56.1299,-34.9101],[-56.1298,-34.9114],[-56.1311,-34.9115],[-56.1323,-34.9123],[-56.1356,-34.9114],[-56.1383,-34.9123],[-56.1395,-34.9118],[-56.1401,-34.9105],[-56.141,-34.9104],[-56.1435,-34.9113],[-56.1465,-34.9135],[-56.1481,-34.9158],[-56.1484,-34.9181],[-56.1479,-34.9189],[-56.1452,-34.9188],[-56.1455,-34.9194],[-56.1452,-34.9196],[-56.1458,-34.9202],[-56.1475,-34.9207],[-56.1473,-34.9212],[-56.148,-34.9212],[-56.1498,-34.9221],[-56.1491,-34.9222],[-56.1502,-34.9223],[-56.1516,-34.9231],[-56.1516,-34.9237],[-56.151,-34.9236],[-56.1514,-34.9238],[-56.1513,-34.9244],[-56.1499,-34.9248],[-56.1511,-34.9252],[-56.1498,-34.925],[-56.1514,-34.9259],[-56.151,-34.9254],[-56.1528,-34.9255],[-56.1531,-34.9252],[-56.1533,-34.9259],[-56.1561,-34.9273],[-56.1558,-34.9278],[-56.1572,-34.9274],[-56.1578,-34.9278],[-56.1577,-34.9285],[-56.1563,-34.9284],[-56.1579,-34.9285],[-56.1581,-34.9289],[-56.1578,-34.929],[-56.1583,-34.9291],[-56.1577,-34.9292],[-56.1583,-34.9295],[-56.158,-34.9295],[-56.1584,-34.9297],[-56.1582,-34.9308],[-56.1585,-34.9313],[-56.1579,-34.9314],[-56.1588,-34.9316],[-56.1586,-34.9334],[-56.1598,-34.9357],[-56.1598,-34.9378],[-56.1605,-34.938],[-56.1606,-34.936],[-56.1616,-34.9362],[-56.1609,-34.9357],[-56.1614,-34.9355],[-56.1612,-34.935],[-56.1616,-34.9351],[-56.1612,-34.9349],[-56.1618,-34.9346],[-56.1626,-34.9348],[-56.1617,-34.9344],[-56.1623,-34.9336],[-56.1635,-34.9335],[-56.1639,-34.9325],[-56.1637,-34.9322],[-56.1633,-34.9333],[-56.1625,-34.9333],[-56.1623,-34.9328],[-56.1631,-34.9328],[-56.1621,-34.9325],[-56.1612,-34.9329],[-56.1609,-34.9328],[-56.1612,-34.9325],[-56.1609,-34.9328],[-56.1602,-34.9322],[-56.1605,-34.9311],[-56.1615,-34.9309],[-56.1606,-34.9303],[-56.1609,-34.93],[-56.1612,-34.9304],[-56.1656,-34.8895],[-56.1632,-34.8854],[-56.1552,-34.8793],[-56.1524,-34.8821],[-56.1488,-34.8871]]]],"A":[[[[-56.3256,-34.7826],[-56.3202,-34.7838],[-56.3155,-34.7915],[-56.3141,-34.7932],[-56.3123,-34.7947],[-56.3085,-34.796],[-56.3108,-34.7977],[-56.2946,-34.8058],[-56.2889,-34.8098],[-56.2712,-34.8188],[-56.2604,-34.8161],[-56.2591,-34.8163],[-56.2583,-34.8178],[-56.2582,-34.8195],[-56.2609,-34.8206],[-56.261,-34.8225],[-56.2626,-34.823],[-56.2595,-34.8274],[-56.2553,-34.824],[-56.2486,-34.8287],[-56.2498,-34.8297],[-56.2488,-34.8304],[-56.2276,-34.8428],[-56.2033,-34.8562],[-56.2025,-34.8569],[-56.2025,-34.8575],[-56.2035,-34.858],[-56.206,-34.858],[-56.2078,-34.8589],[-56.2102,-34.8595],[-56.213,-34.8622],[-56.2165,-34.8643],[-56.2165,-34.8662],[-56.2184,-34.8684],[-56.2241,-34.8699],[-56.2271,-34.8748],[-56.227,-34.8762],[-56.2282,-34.8778],[-56.2287,-34.8778],[-56.2299,-34.8798],[-56.2309,-34.8798],[-56.2329,-34.8787],[-56.2335,-34.8799],[-56.231,-34.8809],[-56.2335,-34.88],[-56.2338,-34.8804],[-56.2359,-34.8796],[-56.2381,-34.8771],[-56.2403,-34.8762],[-56.2408,-34.8764],[-56.2417,-34.8757],[-56.2428,-34.8764],[-56.2443,-34.8761],[-56.2448,-34.8769],[-56.2455,-34.8772],[-56.2463,-34.8769],[-56.247,-34.8773],[-56.2477,-34.8786],[-56.2475,-34.8802],[-56.2467,-34.881],[-56.2467,-34.8817],[-56.2458,-34.8824],[-56.2442,-34.8823],[-56.2441,-34.8832],[-56.2437,-34.8833],[-56.2445,-34.8836],[-56.245,-34.8845],[-56.2446,-34.8843],[-56.2451,-34.8845],[-56.2449,-34.8847],[-56.2453,-34.886],[-56.2451,-34.8866],[-56.2444,-34.8867],[-56.2449,-34.8869],[-56.2446,-34.8878],[-56.245,-34.8878],[-56.2449,-34.8882],[-56.2433,-34.8882],[-56.2448,-34.8884],[-56.2449,-34.8888],[-56.2443,-34.8888],[-56.2448,-34.8889],[-56.2442,-34.8899],[-56.2448,-34.8906],[-56.2435,-34.8905],[-56.2449,-34.8907],[-56.245,-34.8913],[-56.2444,-34.8919],[-56.2448,-34.8933],[-56.2443,-34.8945],[-56.2446,-34.8949],[-56.2438,-34.8952],[-56.2447,-34.8951],[-56.2449,-34.8962],[-56.2454,-34.8956],[-56.246,-34.8961],[-56.2474,-34.8961],[-56.2479,-34.8965],[-56.2476,-34.8959],[-56.2525,-34.8964],[-56.2545,-34.8973],[-56.2551,-34.898],[-56.2557,-34.898],[-56.2552,-34.8988],[-56.256,-34.8989],[-56.2552,-34.8991],[-56.2562,-34.8989],[-56.2558,-34.8994],[-56.2567,-34.899],[-56.2564,-34.8993],[-56.2582,-34.8995],[-56.2586,-34.9001],[-56.2581,-34.9003],[-56.2581,-34.9014],[-56.2572,-34.9026],[-56.2576,-34.9029],[-56.257,-34.9031],[-56.2578,-34.903],[-56.2576,-34.9036],[-56.2562,-34.9033],[-56.2571,-34.9037],[-56.2569,-34.9043],[-56.2562,-34.9043],[-56.2566,-34.9045],[-56.2563,-34.905],[-56.2575,-34.9056],[-56.2564,-34.9061],[-56.2575,-34.9058],[-56.2589,-34.9063],[-56.2607,-34.906],[-56.261,-34.9055],[-56.2607,-34.9048],[-56.26,-34.9045],[-56.2603,-34.9037],[-56.2633,-34.9023],[-56.2654,-34.9025],[-56.2661,-34.9019],[-56.267,-34.9019],[-56.2682,-34.9014],[-56.2689,-34.9009],[-56.2688,-34.9003],[-56.2693,-34.9003],[-56.2684,-34.8994],[-56.2703,-34.8982],[-56.272,-34.8981],[-56.2732,-34.8987],[-56.2735,-34.8997],[-56.2745,-34.9001],[-56.2746,-34.9008],[-56.2741,-34.9011],[-56.2746,-34.901],[-56.2743,-34.9014],[-56.2748,-34.9015],[-56.2748,-34.902],[-56.2768,-34.9013],[-56.2791,-34.8993],[-56.2785,-34.8996],[-56.277,-34.8982],[-56.277,-34.8973],[-56.2781,-34.8962],[-56.2783,-34.8952],[-56.2791,-34.8951],[-56.2794,-34.8958],[-56.2801,-34.8959],[-56.2803,-34.8951],[-56.2805,-34.8953],[-56.2803,-34.8949],[-56.2818,-34.8944],[-56.2833,-34.8948],[-56.283,-34.8951],[-56.2835,-34.8958],[-56.2861,-34.8979],[-56.2846,-34.8998],[-56.285,-34.9001],[-56.2861,-34.8996],[-56.2859,-34.9001],[-56.2866,-34.8998],[-56.2866,-34.9001],[-56.2869,-34.8996],[-56.2891,-34.8995],[-56.2896,-34.8991],[-56.2895,-34.8984],[-56.2874,-34.8971],[-56.288,-34.8959],[-56.289,-34.8958],[-56.2889,-34.8951],[-56.2904,-34.8942],[-56.2911,-34.8948],[-56.2912,-34.8956],[-56.2914,-34.8954],[-56.2924,-34.896],[-56.2933,-34.8957],[-56.293,-34.8951],[-56.2933,-34.8951],[-56.2929,-34.895],[-56.294,-34.8947],[-56.2947,-34.8936],[-56.2959,-34.8931],[-56.3017,-34.8937],[-56.3059,-34.8956],[-56.306,-34.8967],[-56.3065,-34.8971],[-56.3073,-34.8974],[-56.3078,-34.8966],[-56.3096,-34.8971],[-56.3097,-34.8979],[-56.3103,-34.8987],[-56.31,-34.8991],[-56.3104,-34.8989],[-56.31,-34.8993],[-56.3106,-34.8991],[-56.3103,-34.8995],[-56.3111,-34.8999],[-56.3114,-34.9009],[-56.3091,-34.9017],[-56.309,-34.9024],[-56.3085,-34.9024],[-56.309,-34.9024],[-56.3089,-34.903],[-56.3099,-34.9038],[-56.3107,-34.9033],[-56.3112,-34.904],[-56.3111,-34.9054],[-56.3132,-34.9054],[-56.3139,-34.9046],[-56.3143,-34.9049],[-56.3149,-34.9046],[-56.3146,-34.9049],[-56.3151,-34.9053],[-56.3151,-34.9048],[-56.3157,-34.9049],[-56.3156,-34.9046],[-56.316,-34.9045],[-56.3156,-34.9044],[-56.3157,-34.903],[-56.3154,-34.9031],[-56.3157,-34.9026],[-56.3153,-34.9027],[-56.3148,-34.9021],[-56.3139,-34.9021],[-56.3139,-34.9015],[-56.3149,-34.9011],[-56.3149,-34.9006],[-56.3159,-34.9001],[-56.316,-34.8994],[-56.3165,-34.8994],[-56.3161,-34.8989],[-56.3165,-34.8988],[-56.3163,-34.8985],[-56.3166,-34.898],[-56.3193,-34.8966],[-56.3201,-34.8956],[-56.3197,-34.8953],[-56.3204,-34.8953],[-56.3203,-34.8949],[-56.3211,-34.8943],[-56.3239,-34.8939],[-56.3247,-34.8933],[-56.3245,-34.8926],[-56.3255,-34.8918],[-56.329,-34.8908],[-56.3312,-34.891],[-56.3308,-34.8909],[-56.3325,-34.8903],[-56.3315,-34.8896],[-56.3309,-34.8883],[-56.3325,-34.887],[-56.3338,-34.8867],[-56.3339,-34.8857],[-56.3337,-34.8847],[-56.3322,-34.8836],[-56.3321,-34.8832],[-56.3329,-34.8827],[-56.3317,-34.8816],[-56.3322,-34.8816],[-56.3318,-34.8813],[-56.3327,-34.8812],[-56.3334,-34.8805],[-56.3333,-34.8801],[-56.3349,-34.8786],[-56.3338,-34.8781],[-56.3348,-34.8767],[-56.3349,-34.8746],[-56.3365,-34.8736],[-56.3372,-34.8737],[-56.3374,-34.8731],[-56.3389,-34.8727],[-56.3391,-34.8717],[-56.34,-34.872],[-56.3398,-34.8711],[-56.3402,-34.8705],[-56.343,-34.8697],[-56.3449,-34.8707],[-56.346,-34.8705],[-56.347,-34.8698],[-56.348,-34.8697],[-56.3486,-34.869],[-56.3486,-34.8681],[-56.3502,-34.8681],[-56.3509,-34.8667],[-56.3515,-34.8664],[-56.3522,-34.8677],[-56.3516,-34.8692],[-56.3521,-34.8689],[-56.3524,-34.8681],[-56.3527,-34.8681],[-56.3522,-34.8694],[-56.3532,-34.8695],[-56.3519,-34.8706],[-56.3523,-34.8707],[-56.3538,-34.8689],[-56.3545,-34.8689],[-56.355,-34.8695],[-56.3556,-34.8692],[-56.3555,-34.8688],[-56.3559,-34.8687],[-56.3545,-34.8675],[-56.3559,-34.866],[-56.3578,-34.8667],[-56.3592,-34.8668],[-56.3612,-34.8662],[-56.3622,-34.8652],[-56.3633,-34.8655],[-56.3638,-34.8662],[-56.3647,-34.8663],[-56.3659,-34.8652],[-56.3676,-34.8654],[-56.368,-34.8646],[-56.3671,-34.8642],[-56.3669,-34.8637],[-56.3675,-34.863],[-56.3709,-34.8623],[-56.374,-34.8623],[-56.3752,-34.8613],[-56.3761,-34.8613],[-56.3759,-34.8611],[-56.3762,-34.8607],[-56.3773,-34.8609],[-56.3769,-34.8597],[-56.3759,-34.8592],[-56.3759,-34.8586],[-56.3771,-34.8577],[-56.3794,-34.8578],[-56.381,-34.8569],[-56.3815,-34.8551],[-56.3806,-34.853],[-56.3812,-34.852],[-56.3828,-34.8514],[-56.3846,-34.852],[-56.3859,-34.8516],[-56.3861,-34.851],[-56.387,-34.8508],[-56.3867,-34.8506],[-56.3873,-34.8503],[-56.3882,-34.8502],[-56.3886,-34.8495],[-56.3892,-34.8493],[-56.3889,-34.8493],[-56.3893,-34.8473],[-56.3889,-34.8464],[-56.3901,-34.8453],[-56.3933,-34.8445],[-56.3957,-34.8434],[-56.3992,-34.844],[-56.3999,-34.8427],[-56.4011,-34.842],[-56.4041,-34.8417],[-56.4048,-34.8421],[-56.4064,-34.8421],[-56.4094,-34.8413],[-56.4092,-34.8411],[-56.4111,-34.8413],[-56.411,-34.841],[-56.4114,-34.8409],[-56.4112,-34.8407],[-56.4124,-34.8405],[-56.4129,-34.8396],[-56.4139,-34.8401],[-56.4149,-34.8397],[-56.4165,-34.8402],[-56.4165,-34.8399],[-56.419,-34.8397],[-56.4194,-34.839],[-56.4199,-34.839],[-56.42,-34.8385],[-56.4206,-34.8385],[-56.4203,-34.8382],[-56.4215,-34.8378],[-56.4247,-34.8379],[-56.4242,-34.8377],[-56.4248,-34.8376],[-56.4257,-34.8366],[-56.4253,-34.8366],[-56.4259,-34.8363],[-56.4258,-34.8353],[-56.427,-34.8353],[-56.4293,-34.8345],[-56.4288,-34.8335],[-56.4297,-34.833],[-56.4293,-34.8328],[-56.4293,-34.8322],[-56.4301,-34.832],[-56.4296,-34.8316],[-56.4299,-34.8314],[-56.4291,-34.8309],[-56.4306,-34.8309],[-56.4315,-34.8301],[-56.4311,-34.83],[-56.4315,-34.83],[-56.4311,-34.8297],[-56.4308,-34.8285],[-56.4315,-34.828],[-56.4309,-34.8275],[-56.4267,-34.8268],[-56.4258,-34.8257],[-56.4216,-34.8225],[-56.4201,-34.8221],[-56.4185,-34.8226],[-56.4181,-34.8217],[-56.4174,-34.8218],[-56.4177,-34.8214],[-56.417,-34.8208],[-56.4175,-34.82],[-56.4162,-34.8199],[-56.4161,-34.8196],[-56.4167,-34.8196],[-56.416,-34.8191],[-56.4149,-34.8192],[-56.4139,-34.8186],[-56.4139,-34.8178],[-56.4133,-34.8176],[-56.4136,-34.8174],[-56.4093,-34.8168],[-56.4089,-34.8165],[-56.4089,-34.8156],[-56.4101,-34.8149],[-56.4083,-34.8154],[-56.4085,-34.815],[-56.4073,-34.8143],[-56.4073,-34.8134],[-56.4067,-34.813],[-56.407,-34.8116],[-56.4058,-34.8112],[-56.4057,-34.8108],[-56.4046,-34.8101],[-56.4046,-34.8096],[-56.4058,-34.8081],[-56.4041,-34.8079],[-56.4035,-34.8068],[-56.4007,-34.8058],[-56.4011,-34.8055],[-56.3979,-34.8053],[-56.3945,-34.8039],[-56.3933,-34.8028],[-56.3921,-34.8024],[-56.3922,-34.8019],[-56.3913,-34.8018],[-56.3896,-34.8006],[-56.389,-34.7992],[-56.389,-34.7986],[-56.3897,-34.7985],[-56.3885,-34.7978],[-56.3856,-34.7978],[-56.3824,-34.7983],[-56.3787,-34.7977],[-56.3731,-34.7992],[-56.3695,-34.7991],[-56.3701,-34.7995],[-56.3652,-34.7992],[-56.3655,-34.7987],[-56.3652,-34.7987],[-56.3643,-34.7987],[-56.3637,-34.7992],[-56.362,-34.7991],[-56.3629,-34.7988],[-56.3624,-34.7981],[-56.3624,-34.7961],[-56.3613,-34.796],[-56.3612,-34.7955],[-56.3606,-34.7957],[-56.3602,-34.7949],[-56.3586,-34.7955],[-56.3574,-34.7954],[-56.3566,-34.7945],[-56.3565,-34.7938],[-56.3579,-34.7933],[-56.357,-34.7921],[-56.355,-34.7914],[-56.3548,-34.7896],[-56.3562,-34.7879],[-56.3547,-34.785],[-56.3545,-34.7854],[-56.3487,-34.7835],[-56.3461,-34.7842],[-56.3446,-34.7841],[-56.3336,-34.7816],[-56.3256,-34.7826]]]],"B":[[[[-56.1656,-34.8895],[-56.1614,-34.9277],[-56.1614,-34.9306],[-56.1623,-34.9304],[-56.1616,-34.9299],[-56.1643,-34.9286],[-56.1646,-34.9283],[-56.1644,-34.9281],[-56.1655,-34.9276],[-56.1662,-34.9268],[-56.1677,-34.9262],[-56.1686,-34.9265],[-56.168,-34.9262],[-56.17,-34.9255],[-56.1709,-34.9257],[-56.1709,-34.9254],[-56.1718,-34.9253],[-56.172,-34.9248],[-56.173,-34.925],[-56.172,-34.9247],[-56.1728,-34.9244],[-56.1721,-34.924],[-56.1721,-34.9233],[-56.1713,-34.9225],[-56.1712,-34.9217],[-56.172,-34.9211],[-56.1724,-34.9213],[-56.172,-34.921],[-56.1725,-34.9203],[-56.173,-34.9204],[-56.173,-34.9199],[-56.1726,-34.9199],[-56.1725,-34.9193],[-56.1709,-34.9189],[-56.1707,-34.9183],[-56.1703,-34.9186],[-56.17,-34.918],[-56.1704,-34.9161],[-56.1715,-34.9148],[-56.173,-34.9152],[-56.1739,-34.9146],[-56.1778,-34.9146],[-56.1786,-34.9151],[-56.1781,-34.9152],[-56.1784,-34.9153],[-56.1793,-34.9154],[-56.1789,-34.9152],[-56.1798,-34.9149],[-56.1852,-34.9161],[-56.188,-34.9153],[-56.1938,-34.9128],[-56.1997,-34.9126],[-56.1994,-34.9124],[-56.2003,-34.9117],[-56.2,-34.9115],[-56.2004,-34.911],[-56.2041,-34.9104],[-56.2058,-34.9108],[-56.2066,-34.9114],[-56.2105,-34.9122],[-56.2134,-34.9109],[-56.2149,-34.9109],[-56.223,-34.9134],[-56.2175,-34.9115],[-56.2178,-34.9106],[-56.2184,-34.911],[-56.2191,-34.9107],[-56.2188,-34.9102],[-56.2196,-34.91],[-56.2204,-34.9086],[-56.22,-34.9078],[-56.218,-34.9076],[-56.2205,-34.9069],[-56.2219,-34.9076],[-56.223,-34.906],[-56.2171,-34.903],[-56.2141,-34.9049],[-56.2131,-34.9046],[-56.2147,-34.9014],[-56.2142,-34.9013],[-56.2115,-34.903],[-56.2065,-34.9014],[-56.209,-34.8997],[-56.2075,-34.899],[-56.2046,-34.9008],[-56.1983,-34.8993],[-56.2006,-34.8941],[-56.1985,-34.8928],[-56.1989,-34.892],[-56.1996,-34.8919],[-56.1883,-34.891],[-56.1878,-34.8901],[-56.1856,-34.8905],[-56.1861,-34.8916],[-56.1857,-34.8916],[-56.1814,-34.8906],[-56.1816,-34.8895],[-56.181,-34.8893],[-56.1647,-34.8879],[-56.1656,-34.8895]]]],"C":[[[[-56.1895,-34.8475],[-56.1887,-34.8473],[-56.176,-34.8578],[-56.1513,-34.8767],[-56.1582,-34.8813],[-56.1632,-34.8854],[-56.1647,-34.8879],[-56.181,-34.8893],[-56.1816,-34.8895],[-56.1814,-34.8906],[-56.1857,-34.8916],[-56.1861,-34.8916],[-56.1856,-34.8905],[-56.1878,-34.8901],[-56.1883,-34.891],[-56.1998,-34.8917],[-56.202,-34.893],[-56.2016,-34.8916],[-56.2019,-34.8911],[-56.2027,-34.8911],[-56.2033,-34.8902],[-56.2047,-34.8899],[-56.2052,-34.8887],[-56.2045,-34.8877],[-56.2029,-34.8873],[-56.2022,-34.8875],[-56.2022,-34.8879],[-56.2007,-34.8878],[-56.2011,-34.8876],[-56.2008,-34.8862],[-56.1995,-34.8851],[-56.2001,-34.8851],[-56.1995,-34.885],[-56.1997,-34.8846],[-56.1993,-34.8845],[-56.1999,-34.8842],[-56.2002,-34.8831],[-56.2,-34.8829],[-56.202,-34.8837],[-56.2022,-34.8833],[-56.2017,-34.8827],[-56.2026,-34.8817],[-56.2077,-34.8782],[-56.2084,-34.8783],[-56.2083,-34.8779],[-56.21,-34.8772],[-56.2109,-34.8764],[-56.211,-34.8759],[-56.2122,-34.8752],[-56.215,-34.8742],[-56.2157,-34.876],[-56.2181,-34.8755],[-56.2204,-34.882],[-56.2216,-34.8824],[-56.2258,-34.8814],[-56.2257,-34.8811],[-56.2216,-34.8822],[-56.2209,-34.8819],[-56.2202,-34.8802],[-56.2214,-34.8798],[-56.2209,-34.8783],[-56.2197,-34.8784],[-56.2192,-34.8768],[-56.2206,-34.8747],[-56.2239,-34.8739],[-56.2244,-34.8751],[-56.224,-34.8739],[-56.2252,-34.8736],[-56.2253,-34.8728],[-56.2257,-34.8727],[-56.2244,-34.8702],[-56.2227,-34.8693],[-56.2184,-34.8684],[-56.2165,-34.8662],[-56.2165,-34.8643],[-56.213,-34.8622],[-56.2102,-34.8595],[-56.2078,-34.8589],[-56.206,-34.858],[-56.2028,-34.8578],[-56.2022,-34.8554],[-56.2004,-34.8544],[-56.1992,-34.8523],[-56.1967,-34.8518],[-56.1957,-34.8511],[-56.1946,-34.8487],[-56.1932,-34.8469],[-56.1916,-34.8465],[-56.1895,-34.8475]]]],"D":[[[[-56.1415,-34.7141],[-56.139,-34.7141],[-56.137,-34.7162],[-56.1341,-34.7165],[-56.1322,-34.7163],[-56.132,-34.716],[-56.1284,-34.7165],[-56.1247,-34.7187],[-56.1247,-34.7201],[-56.1241,-34.7207],[-56.1246,-34.7224],[-56.124,-34.7235],[-56.1241,-34.7248],[-56.1229,-34.7273],[-56.124,-34.7301],[-56.1251,-34.7306],[-56.1256,-34.7317],[-56.1263,-34.7321],[-56.1262,-34.7329],[-56.1269,-34.7336],[-56.1269,-34.7364],[-56.1264,-34.7374],[-56.1254,-34.738],[-56.124,-34.7384],[-56.1223,-34.7382],[-56.1204,-34.7411],[-56.12,-34.7442],[-56.1208,-34.7452],[-56.1202,-34.746],[-56.1198,-34.7486],[-56.1184,-34.7488],[-56.1155,-34.7484],[-56.1136,-34.7496],[-56.1124,-34.7508],[-56.1107,-34.7504],[-56.1095,-34.7513],[-56.1072,-34.7516],[-56.1064,-34.7515],[-56.106,-34.7503],[-56.1042,-34.7501],[-56.1017,-34.7512],[-56.1009,-34.7524],[-56.0998,-34.7531],[-56.1001,-34.755],[-56.0995,-34.756],[-56.0977,-34.7571],[-56.0957,-34.7564],[-56.0932,-34.7601],[-56.0939,-34.7615],[-56.0959,-34.7623],[-56.0947,-34.7633],[-56.0948,-34.7642],[-56.0955,-34.7645],[-56.0962,-34.7661],[-56.0971,-34.7664],[-56.0975,-34.7674],[-56.0972,-34.7678],[-56.0999,-34.7693],[-56.0984,-34.7706],[-56.0983,-34.771],[-56.0991,-34.7718],[-56.0977,-34.773],[-56.0983,-34.7736],[-56.0981,-34.7745],[-56.0983,-34.7753],[-56.0979,-34.7759],[-56.096,-34.7767],[-56.0952,-34.7766],[-56.0948,-34.7757],[-56.0944,-34.7758],[-56.0935,-34.7768],[-56.0926,-34.7787],[-56.0911,-34.7799],[-56.0895,-34.7803],[-56.0879,-34.7791],[-56.0886,-34.7802],[-56.106,-34.789],[-56.1066,-34.7906],[-56.1091,-34.7903],[-56.1113,-34.7907],[-56.1272,-34.7986],[-56.1364,-34.7997],[-56.1366,-34.8049],[-56.1407,-34.8241],[-56.141,-34.8289],[-56.1556,-34.8465],[-56.1444,-34.8534],[-56.1435,-34.859],[-56.1362,-34.8652],[-56.1341,-34.8661],[-56.1352,-34.8713],[-56.136,-34.8722],[-56.1525,-34.882],[-56.1552,-34.8793],[-56.1513,-34.8767],[-56.176,-34.8578],[-56.1887,-34.8473],[-56.1862,-34.8452],[-56.1859,-34.8427],[-56.185,-34.8415],[-56.1828,-34.8399],[-56.1834,-34.8386],[-56.1825,-34.8381],[-56.1818,-34.8382],[-56.1814,-34.837],[-56.1814,-34.8364],[-56.1835,-34.8333],[-56.1825,-34.8314],[-56.1825,-34.8304],[-56.1819,-34.8298],[-56.183,-34.8278],[-56.1847,-34.8268],[-56.1854,-34.8243],[-56.1853,-34.8233],[-56.1872,-34.8222],[-56.1879,-34.8212],[-56.1875,-34.8204],[-56.1878,-34.819],[-56.1856,-34.8156],[-56.1854,-34.8139],[-56.1858,-34.8129],[-56.1835,-34.8112],[-56.1837,-34.81],[-56.1854,-34.8092],[-56.1858,-34.8086],[-56.1834,-34.8066],[-56.1827,-34.8054],[-56.1845,-34.8047],[-56.184,-34.8037],[-56.185,-34.8032],[-56.1863,-34.8019],[-56.1866,-34.801],[-56.1866,-34.8004],[-56.1858,-34.7996],[-56.1859,-34.7988],[-56.1849,-34.7978],[-56.1845,-34.7966],[-56.1855,-34.7952],[-56.1874,-34.7941],[-56.1877,-34.7934],[-56.1894,-34.7924],[-56.1903,-34.7908],[-56.1912,-34.7904],[-56.1915,-34.7893],[-56.1913,-34.7884],[-56.1905,-34.7877],[-56.1912,-34.7859],[-56.1904,-34.784],[-56.1913,-34.7814],[-56.191,-34.7804],[-56.1913,-34.7794],[-56.1908,-34.7787],[-56.1911,-34.7782],[-56.1907,-34.7773],[-56.1909,-34.7767],[-56.1907,-34.7763],[-56.1894,-34.7757],[-56.1894,-34.7748],[-56.1882,-34.7742],[-56.1883,-34.7724],[-56.1894,-34.7719],[-56.1896,-34.7709],[-56.1907,-34.7705],[-56.1939,-34.7677],[-56.1933,-34.7666],[-56.1921,-34.7664],[-56.1917,-34.7648],[-56.1904,-34.7634],[-56.189,-34.7632],[-56.1876,-34.7642],[-56.1865,-34.7643],[-56.1849,-34.7641],[-56.184,-34.7632],[-56.1827,-34.7629],[-56.1813,-34.7632],[-56.179,-34.7629],[-56.1782,-34.762],[-56.1788,-34.7613],[-56.1782,-34.7598],[-56.1797,-34.7579],[-56.1793,-34.7563],[-56.1767,-34.7554],[-56.1771,-34.7542],[-56.1754,-34.7523],[-56.1754,-34.7515],[-56.1746,-34.751],[-56.1733,-34.7511],[-56.1717,-34.7497],[-56.1712,-34.748],[-56.1716,-34.7454],[-56.1702,-34.7439],[-56.1703,-34.7435],[-56.1688,-34.7415],[-56.1668,-34.7306],[-56.1662,-34.7303],[-56.1645,-34.7275],[-56.1603,-34.7255],[-56.1593,-34.7215],[-56.1563,-34.7227],[-56.1558,-34.7219],[-56.1542,-34.7211],[-56.1492,-34.7199],[-56.1425,-34.7142],[-56.1415,-34.7141]]]],"E":[[[[-56.0571,-34.8685],[-56.052,-34.8695],[-56.0475,-34.8675],[-56.0451,-34.8685],[-56.0419,-34.8687],[-56.0414,-34.8692],[-56.0412,-34.8701],[-56.04,-34.8711],[-56.0367,-34.8723],[-56.0349,-34.8778],[-56.0338,-34.8785],[-56.0319,-34.8786],[-56.0305,-34.8797],[-56.029,-34.8794],[-56.0239,-34.8766],[-56.0199,-34.875],[-56.0169,-34.8739],[-56.0164,-34.8741],[-56.0399,-34.8854],[-56.0534,-34.8912],[-56.0584,-34.8943],[-56.0627,-34.8986],[-56.0632,-34.8985],[-56.0632,-34.8989],[-56.0644,-34.8993],[-56.0646,-34.8997],[-56.0674,-34.8998],[-56.0692,-34.8991],[-56.07,-34.8997],[-56.0717,-34.9],[-56.0715,-34.9004],[-56.0721,-34.8995],[-56.0729,-34.8996],[-56.0723,-34.8993],[-56.073,-34.8984],[-56.0755,-34.8979],[-56.0779,-34.8983],[-56.0801,-34.8997],[-56.0806,-34.9004],[-56.0819,-34.9002],[-56.0822,-34.9005],[-56.0831,-34.898],[-56.0839,-34.8969],[-56.0851,-34.8966],[-56.0848,-34.8961],[-56.0852,-34.8958],[-56.0858,-34.8956],[-56.0864,-34.8961],[-56.0883,-34.8957],[-56.0888,-34.8964],[-56.0892,-34.8958],[-56.0907,-34.8954],[-56.0939,-34.8962],[-56.096,-34.8971],[-56.0958,-34.8974],[-56.0979,-34.897],[-56.0998,-34.8981],[-56.1,-34.8987],[-56.0997,-34.8992],[-56.1009,-34.8998],[-56.1017,-34.8997],[-56.1013,-34.8995],[-56.1018,-34.8994],[-56.1011,-34.8989],[-56.1023,-34.8979],[-56.1051,-34.8972],[-56.1092,-34.8972],[-56.1122,-34.8975],[-56.1131,-34.8983],[-56.1133,-34.8978],[-56.1135,-34.8985],[-56.114,-34.8983],[-56.1144,-34.8987],[-56.1154,-34.8981],[-56.118,-34.8985],[-56.1216,-34.9004],[-56.1271,-34.8952],[-56.138,-34.8866],[-56.142,-34.8868],[-56.1476,-34.8888],[-56.1525,-34.882],[-56.1368,-34.8729],[-56.1353,-34.8714],[-56.1322,-34.8736],[-56.1259,-34.8734],[-56.1131,-34.8705],[-56.1081,-34.8699],[-56.1023,-34.8717],[-56.0983,-34.8724],[-56.0951,-34.8723],[-56.0808,-34.87],[-56.0698,-34.8701],[-56.0599,-34.8667],[-56.0588,-34.8679],[-56.0571,-34.8685]]]],"F":[[[[-56.0526,-34.761],[-56.0513,-34.761],[-56.0504,-34.7618],[-56.0465,-34.7603],[-56.0458,-34.7608],[-56.0455,-34.7622],[-56.0449,-34.7627],[-56.0386,-34.764],[-56.0381,-34.7646],[-56.0383,-34.7659],[-56.037,-34.7663],[-56.037,-34.7678],[-56.0356,-34.7683],[-56.0346,-34.7695],[-56.0337,-34.7718],[-56.0339,-34.773],[-56.0331,-34.7743],[-56.0316,-34.7748],[-56.0307,-34.7755],[-56.0306,-34.7762],[-56.0312,-34.7767],[-56.0309,-34.7771],[-56.0293,-34.7771],[-56.0295,-34.7784],[-56.0291,-34.7796],[-56.0297,-34.7804],[-56.0292,-34.781],[-56.0295,-34.7813],[-56.0314,-34.7822],[-56.0331,-34.782],[-56.0323,-34.7838],[-56.0326,-34.7843],[-56.0338,-34.7844],[-56.0351,-34.7837],[-56.037,-34.7841],[-56.0372,-34.7868],[-56.0388,-34.7881],[-56.0388,-34.789],[-56.0399,-34.7893],[-56.0401,-34.7897],[-56.0394,-34.7911],[-56.0416,-34.7909],[-56.0429,-34.7922],[-56.0429,-34.7926],[-56.0414,-34.7938],[-56.0408,-34.7951],[-56.0416,-34.7961],[-56.0409,-34.7963],[-56.039,-34.7958],[-56.0387,-34.7963],[-56.0388,-34.7972],[-56.0406,-34.7973],[-56.0415,-34.7982],[-56.0414,-34.8003],[-56.0401,-34.8015],[-56.0416,-34.8028],[-56.0416,-34.8035],[-56.0402,-34.8044],[-56.0401,-34.805],[-56.0412,-34.8058],[-56.0448,-34.8057],[-56.0474,-34.8077],[-56.0494,-34.8102],[-56.0501,-34.8123],[-56.0529,-34.8161],[-56.0531,-34.8168],[-56.0519,-34.8215],[-56.0551,-34.8265],[-56.0542,-34.852],[-56.0562,-34.8562],[-56.0563,-34.8602],[-56.0605,-34.8644],[-56.0609,-34.866],[-56.0599,-34.8667],[-56.0698,-34.8701],[-56.0808,-34.87],[-56.0941,-34.8723],[-56.0983,-34.8724],[-56.1023,-34.8717],[-56.1081,-34.8699],[-56.1131,-34.8705],[-56.1259,-34.8734],[-56.1322,-34.8736],[-56.1353,-34.8714],[-56.1341,-34.866],[-56.1362,-34.8652],[-56.1435,-34.859],[-56.1444,-34.8534],[-56.1556,-34.8465],[-56.141,-34.8289],[-56.1407,-34.8241],[-56.1366,-34.8049],[-56.1364,-34.7997],[-56.1272,-34.7986],[-56.1113,-34.7907],[-56.1091,-34.7903],[-56.1066,-34.7906],[-56.106,-34.789],[-56.0886,-34.7802],[-56.0879,-34.7791],[-56.087,-34.7792],[-56.0859,-34.7783],[-56.0847,-34.778],[-56.0826,-34.7783],[-56.0831,-34.7768],[-56.0783,-34.7753],[-56.0767,-34.7743],[-56.0754,-34.7718],[-56.0721,-34.7727],[-56.0706,-34.7727],[-56.0699,-34.7721],[-56.0698,-34.7706],[-56.069,-34.7695],[-56.0695,-34.7689],[-56.0693,-34.7683],[-56.0677,-34.7681],[-56.0677,-34.7675],[-56.0664,-34.766],[-56.065,-34.7665],[-56.0645,-34.7671],[-56.0647,-34.768],[-56.0637,-34.7683],[-56.0631,-34.769],[-56.0594,-34.7696],[-56.0586,-34.7687],[-56.0582,-34.7669],[-56.0574,-34.7664],[-56.0561,-34.7643],[-56.0565,-34.7632],[-56.0549,-34.7617],[-56.0546,-34.7603],[-56.0538,-34.7603],[-56.0526,-34.761]]]],"G":[[[[-56.3134,-34.7028],[-56.3125,-34.7049],[-56.3117,-34.705],[-56.3106,-34.7038],[-56.3098,-34.7037],[-56.3092,-34.7032],[-56.3085,-34.7041],[-56.3087,-34.7057],[-56.3084,-34.7061],[-56.3064,-34.707],[-56.3053,-34.7066],[-56.3035,-34.7071],[-56.3032,-34.7077],[-56.3036,-34.7083],[-56.3018,-34.7085],[-56.3015,-34.7102],[-56.2989,-34.711],[-56.2985,-34.7118],[-56.2974,-34.7123],[-56.2974,-34.7135],[-56.2963,-34.7148],[-56.2962,-34.7163],[-56.295,-34.718],[-56.2922,-34.7192],[-56.2898,-34.7183],[-56.2877,-34.72],[-56.2873,-34.721],[-56.2883,-34.7215],[-56.2863,-34.7233],[-56.2831,-34.724],[-56.282,-34.725],[-56.2819,-34.7261],[-56.28,-34.727],[-56.2791,-34.7297],[-56.2789,-34.7336],[-56.2778,-34.7349],[-56.2779,-34.7386],[-56.2774,-34.7388],[-56.2756,-34.7383],[-56.2724,-34.7395],[-56.2723,-34.7406],[-56.2733,-34.7415],[-56.2745,-34.7445],[-56.273,-34.7477],[-56.2704,-34.751],[-56.2687,-34.7514],[-56.2674,-34.7511],[-56.2665,-34.7523],[-56.2654,-34.7525],[-56.2627,-34.7545],[-56.2616,-34.7536],[-56.2559,-34.7541],[-56.2538,-34.7557],[-56.2506,-34.7575],[-56.2501,-34.759],[-56.2483,-34.7596],[-56.2467,-34.7594],[-56.2453,-34.7606],[-56.2441,-34.7603],[-56.2433,-34.761],[-56.2416,-34.7616],[-56.2407,-34.7628],[-56.2387,-34.7633],[-56.2383,-34.7638],[-56.237,-34.764],[-56.2349,-34.7653],[-56.2344,-34.7675],[-56.2337,-34.7687],[-56.2311,-34.7701],[-56.23,-34.7694],[-56.2281,-34.7692],[-56.2281,-34.7679],[-56.2266,-34.7676],[-56.2252,-34.7662],[-56.2211,-34.7652],[-56.2213,-34.7638],[-56.221,-34.7623],[-56.22,-34.7617],[-56.2198,-34.7608],[-56.218,-34.7597],[-56.2189,-34.7582],[-56.2189,-34.7574],[-56.2195,-34.7568],[-56.2166,-34.7536],[-56.2161,-34.7517],[-56.2144,-34.7493],[-56.2145,-34.7484],[-56.2134,-34.7481],[-56.212,-34.7465],[-56.2124,-34.7458],[-56.2122,-34.7434],[-56.2109,-34.7421],[-56.2082,-34.741],[-56.2075,-34.7381],[-56.206,-34.737],[-56.2046,-34.735],[-56.205,-34.734],[-56.2043,-34.7334],[-56.2043,-34.7323],[-56.2031,-34.7304],[-56.1988,-34.7274],[-56.1958,-34.7266],[-56.1943,-34.7253],[-56.1933,-34.725],[-56.1929,-34.7225],[-56.1916,-34.7214],[-56.1879,-34.7225],[-56.1869,-34.7219],[-56.1852,-34.7223],[-56.183,-34.7216],[-56.1809,-34.7216],[-56.1793,-34.7211],[-56.1771,-34.7196],[-56.1751,-34.7195],[-56.174,-34.7202],[-56.1737,-34.721],[-56.1742,-34.7226],[-56.1725,-34.725],[-56.1728,-34.7268],[-56.1713,-34.7288],[-56.1703,-34.7294],[-56.171,-34.7305],[-56.1704,-34.7309],[-56.171,-34.7318],[-56.1687,-34.7339],[-56.168,-34.7338],[-56.1675,-34.7351],[-56.1688,-34.7415],[-56.1703,-34.7435],[-56.1702,-34.7439],[-56.1716,-34.7454],[-56.1712,-34.748],[-56.1717,-34.7497],[-56.1733,-34.7511],[-56.1746,-34.751],[-56.1754,-34.7515],[-56.1754,-34.7523],[-56.1771,-34.7542],[-56.1767,-34.7554],[-56.1793,-34.7563],[-56.1797,-34.7579],[-56.1782,-34.7599],[-56.1788,-34.7613],[-56.1782,-34.762],[-56.1787,-34.7627],[-56.1813,-34.7632],[-56.1827,-34.7629],[-56.184,-34.7632],[-56.1849,-34.7641],[-56.1865,-34.7643],[-56.1876,-34.7642],[-56.189,-34.7632],[-56.1904,-34.7634],[-56.1917,-34.7648],[-56.1921,-34.7664],[-56.1933,-34.7666],[-56.1939,-34.7676],[-56.1907,-34.7705],[-56.1896,-34.7709],[-56.1894,-34.7719],[-56.1883,-34.7724],[-56.1882,-34.7742],[-56.1894,-34.7748],[-56.1894,-34.7757],[-56.1907,-34.7763],[-56.1909,-34.7767],[-56.1907,-34.7773],[-56.1911,-34.7782],[-56.1908,-34.7787],[-56.1913,-34.7794],[-56.191,-34.7804],[-56.1913,-34.7814],[-56.1904,-34.784],[-56.1912,-34.7859],[-56.1905,-34.7877],[-56.1913,-34.7884],[-56.1915,-34.7893],[-56.1912,-34.7904],[-56.1903,-34.7908],[-56.1894,-34.7924],[-56.1877,-34.7934],[-56.1874,-34.7941],[-56.1855,-34.7952],[-56.1845,-34.7966],[-56.1849,-34.7978],[-56.1859,-34.7988],[-56.1858,-34.7996],[-56.1866,-34.8004],[-56.1866,-34.801],[-56.1863,-34.8019],[-56.185,-34.8032],[-56.184,-34.8037],[-56.1845,-34.8047],[-56.1827,-34.8054],[-56.1834,-34.8066],[-56.1858,-34.8086],[-56.1854,-34.8092],[-56.1837,-34.81],[-56.1835,-34.8112],[-56.1858,-34.8129],[-56.1854,-34.8139],[-56.1856,-34.8156],[-56.1878,-34.819],[-56.1875,-34.8204],[-56.1879,-34.8212],[-56.1872,-34.8222],[-56.1853,-34.8233],[-56.1854,-34.8243],[-56.1847,-34.8268],[-56.183,-34.8278],[-56.1819,-34.8298],[-56.1825,-34.8304],[-56.1825,-34.8314],[-56.1835,-34.8333],[-56.1814,-34.8364],[-56.1814,-34.837],[-56.1818,-34.8382],[-56.1825,-34.8381],[-56.1833,-34.8385],[-56.1828,-34.8399],[-56.1856,-34.8423],[-56.1862,-34.8434],[-56.1861,-34.8451],[-56.1873,-34.8462],[-56.1891,-34.8475],[-56.1916,-34.8465],[-56.1932,-34.8469],[-56.1946,-34.8487],[-56.1956,-34.851],[-56.1967,-34.8518],[-56.1994,-34.8524],[-56.2004,-34.8544],[-56.2023,-34.8555],[-56.2025,-34.8569],[-56.2028,-34.8569],[-56.2033,-34.8562],[-56.2086,-34.8532],[-56.2276,-34.8428],[-56.2488,-34.8304],[-56.2498,-34.8297],[-56.2486,-34.8287],[-56.2553,-34.824],[-56.2595,-34.8274],[-56.2626,-34.823],[-56.261,-34.8225],[-56.2609,-34.8206],[-56.2582,-34.8195],[-56.2583,-34.8178],[-56.2591,-34.8163],[-56.2604,-34.8161],[-56.2712,-34.8188],[-56.2889,-34.8098],[-56.2946,-34.8058],[-56.3108,-34.7977],[-56.3085,-34.796],[-56.312,-34.7949],[-56.3134,-34.7938],[-56.3155,-34.7915],[-56.3194,-34.7848],[-56.3206,-34.7835],[-56.3336,-34.7816],[-56.3446,-34.7841],[-56.3461,-34.7842],[-56.3487,-34.7835],[-56.3471,-34.7828],[-56.3455,-34.7816],[-56.3424,-34.7774],[-56.3419,-34.776],[-56.3422,-34.7727],[-56.3417,-34.7716],[-56.3425,-34.7686],[-56.3448,-34.764],[-56.3454,-34.7605],[-56.3445,-34.7585],[-56.3441,-34.759],[-56.343,-34.7589],[-56.3405,-34.7564],[-56.3398,-34.7552],[-56.3398,-34.7534],[-56.3398,-34.7539],[-56.3391,-34.7541],[-56.3387,-34.752],[-56.3382,-34.752],[-56.3395,-34.7503],[-56.3392,-34.7498],[-56.3395,-34.7495],[-56.3386,-34.7488],[-56.3387,-34.7486],[-56.3391,-34.7489],[-56.3397,-34.7473],[-56.3384,-34.7474],[-56.3394,-34.7471],[-56.3394,-34.7464],[-56.3406,-34.746],[-56.3413,-34.7452],[-56.3425,-34.7446],[-56.3426,-34.7441],[-56.3418,-34.7443],[-56.3399,-34.742],[-56.3398,-34.7413],[-56.3403,-34.7409],[-56.3408,-34.7411],[-56.3405,-34.7403],[-56.3422,-34.7388],[-56.344,-34.7383],[-56.3443,-34.7377],[-56.3449,-34.7378],[-56.3457,-34.7367],[-56.3451,-34.7362],[-56.3458,-34.7352],[-56.3453,-34.7349],[-56.3455,-34.7343],[-56.3458,-34.7338],[-56.3472,-34.7337],[-56.348,-34.733],[-56.3474,-34.7326],[-56.3473,-34.7333],[-56.3467,-34.7335],[-56.3462,-34.733],[-56.3465,-34.7326],[-56.3457,-34.7323],[-56.3467,-34.7321],[-56.3459,-34.7318],[-56.3459,-34.7313],[-56.3467,-34.7299],[-56.3475,-34.73],[-56.3483,-34.7295],[-56.3491,-34.7274],[-56.3494,-34.7279],[-56.3511,-34.7278],[-56.3513,-34.727],[-56.3525,-34.7271],[-56.3532,-34.7261],[-56.3508,-34.7232],[-56.3474,-34.7215],[-56.3465,-34.719],[-56.3444,-34.7168],[-56.3422,-34.7131],[-56.34,-34.7133],[-56.3366,-34.7157],[-56.3337,-34.7128],[-56.3306,-34.7111],[-56.3286,-34.7078],[-56.3271,-34.7044],[-56.3246,-34.7022],[-56.321,-34.7021],[-56.3178,-34.7029],[-56.3157,-34.7018],[-56.3134,-34.7028]]]]};
+render();
+cargarPlan();cargarTE();cargarAsis();cargarBases(true);
+setInterval(cargarAsis,CFG.CADA_ASIS*1000);
+setInterval(()=>cargarBases(),CFG.CADA_BASES*1000);
+setInterval(cargarPlan,CFG.CADA_PLAN*1000);
+setInterval(cargarTE,CFG.CADA_TE*1000);
+setInterval(render,30000);   // el estado cambia con la hora aunque no lleguen datos nuevos
+</script>
+</body>
+</html>
