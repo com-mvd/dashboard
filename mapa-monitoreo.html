@@ -48,8 +48,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .seg button{border:0;background:transparent;padding:5px 13px;border-radius:7px;font-size:13px;color:var(--mute);font-weight:500}
 .seg button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
 .sp{flex:1}
-.viejo{margin-top:6px;font-size:13px;font-weight:600;letter-spacing:0;color:var(--marca)}
-.viejo[hidden]{display:none}
+.actu{position:absolute;bottom:12px;left:14px;z-index:500;pointer-events:none;font-size:12.5px;font-weight:500;color:var(--mute);text-shadow:0 0 6px var(--bg),0 0 12px var(--bg)}
+.actu[hidden]{display:none}
 .clock{position:absolute;top:12px;left:14px;z-index:500;pointer-events:none;text-shadow:0 0 6px var(--bg),0 0 12px var(--bg);font-size:40px;line-height:1;font-weight:600;letter-spacing:-.02em}
 
 
@@ -157,7 +157,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 <main class="main">
   <div class="mapbox">
     <div id="map"></div>
-    <div class="clock num" id="clock"><span id="hora">--:--</span><div class="viejo" id="viejo" hidden></div></div>
+    <div class="clock num" id="clock"><span id="hora">--:--</span></div>
+    <div class="actu num" id="actu" hidden></div>
     <div class="mtools">
       <button class="ic" id="bTema" title="Tema claro / oscuro">◐</button>
       <button class="ic" id="bFs" title="Pantalla completa (F)">⛶</button>
@@ -188,7 +189,6 @@ const CFG={
   MARGEN:30,      // "Ahora" muestra los turnos que empiezan o terminaron hace menos de esto (min)
   RITMO:90,       // ventana para medir cierres por hora (min)
   CO:'centro-operativo.json.gz',   // archivo liviano que arma n8n cada 5 min (flujo centroOperativo1): solo asignadas y cierres desde las 18 h de ayer
-  VIEJO:15,       // min: si el archivo es más viejo, aviso debajo de la hora
   CADA_BASES:60, CADA_PLAN:120, CADA_TE:120, CADA_ASIS:1800   // segundos entre lecturas
 };
 const BASES={
@@ -644,10 +644,10 @@ function barra(){
   const W=ahora(),d=new Date(W);
   const dias=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'],mes=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   $('hora').textContent=hhmm(W);
-  // Aviso discreto debajo de la hora si el archivo de n8n no se actualiza (PC, VPN o n8n caídos)
-  const g=DATA.generado,v=$('viejo'),viejo=ARRANCO&&(g?W-g>CFG.VIEJO*60000:!!DATA.basesErr);
-  v.hidden=!viejo;
-  if(viejo)v.textContent=g?'datos de hace '+dur((W-g)/60000):'sin datos de las bases';
+  // Abajo a la izquierda del mapa: hora en que n8n armó el archivo de las bases (si se atrasa, se cayó la PC, la VPN o n8n)
+  const g=DATA.generado,a=$('actu');
+  a.hidden=!ARRANCO||!g;
+  if(g)a.textContent='Última actualización '+hhmm(g);
 }
 /* Indicadores: los que deberían estar trabajando ahora, cada uno en un solo grupo, así que la suma da el total. */
 function grupoK(p){
@@ -812,7 +812,7 @@ function etiquetas(arr,obst){
   const size=MAP.getSize(),occ=[];
   const libre=a=>a.x>=2&&a.y>=2&&a.x2<=size.x-2&&a.y2<=size.y-2&&!occ.some(b=>a.x<b.x2&&a.x2>b.x&&a.y<b.y2&&a.y2>b.y);
   const mp=$('map').getBoundingClientRect();
-  for(const el of [$('clock'),document.querySelector('.mtools')]){const ck=el.getBoundingClientRect();occ.push({x:ck.left-mp.left-4,y:ck.top-mp.top-4,x2:ck.right-mp.left+4,y2:ck.bottom-mp.top+4})}
+  for(const el of [$('clock'),$('actu'),document.querySelector('.mtools')]){const ck=el.getBoundingClientRect();occ.push({x:ck.left-mp.left-4,y:ck.top-mp.top-4,x2:ck.right-mp.left+4,y2:ck.bottom-mp.top+4})}
   for(const o of obst){const c=MAP.latLngToContainerPoint(o.pos),r=o.sz/2;occ.push({x:c.x-r,y:c.y-r,x2:c.x+r,y2:c.y+r})}   // todos los marcadores, no solo los que llevan nombre
   for(const o of arr)o.c=MAP.latLngToContainerPoint(o.p.pos);
   const pri=st=>({sin_tarea:0,parado:1,pocas:2,sin_marca:3})[st]??4;
