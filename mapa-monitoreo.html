@@ -290,11 +290,17 @@ const DATA={plan:null,planAt:0,planErr:'',te:null,teAt:0,teErr:'',teTab:'',bases
 const UI={origen:'todos',filtro:null,sel:null,q:'',nombres:load('co_nombres',true),mun:true,fuera:false,cerrados:load('co_cerrados',{})};
 
 /* ============================== LECTURA: PLANILLAS ============================== */
+/* Todo pedido tiene un tiempo máximo: si la red se cuelga (wifi de la tele, VPN), se corta y el próximo vuelve a intentar.
+   Sin esto, un pedido colgado dejaba la página sin actualizar hasta recargarla a mano. */
+async function pedir(u,leer,ms=30000){
+  const ac=new AbortController(),t=setTimeout(()=>ac.abort(),ms);
+  try{const r=await fetch(u,{cache:'no-store',signal:ac.signal});if(!r.ok)throw new Error('HTTP '+r.status);return await leer(r)}
+  catch(e){throw e.name==='AbortError'?new Error('sin respuesta en '+ms/1000+' s'):e}
+  finally{clearTimeout(t)}
+}
 async function hoja(id,sheet){
   const u=`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&headers=0${sheet?'&sheet='+encodeURIComponent(sheet):''}&_=${Date.now()}`;
-  const r=await fetch(u,{cache:'no-store'});
-  if(!r.ok)throw new Error('HTTP '+r.status);
-  const t=await r.text();
+  const t=await pedir(u,r=>r.text());
   if(/^\s*</.test(t))throw new Error('sin acceso (¿dejó de estar compartida?)');
   return parseCSV(t);
 }
@@ -426,10 +432,7 @@ async function cargarAsis(){
 
 /* ============================== LECTURA: BASES DE SUPABASE ============================== */
 async function bajar(arch,ver){
-  // ?v=<hora de subida>: misma URL mientras no cambie, así el navegador puede reusar lo que ya bajó
-  const r=await fetch(CFG.SB+arch+'?v='+encodeURIComponent(ver||Date.now()));
-  if(!r.ok)throw new Error('HTTP '+r.status+' en '+arch);
-  const b=new Uint8Array(await r.arrayBuffer());
+  const b=new Uint8Array(await pedir(CFG.SB+arch+'?v='+encodeURIComponent(ver||Date.now()),r=>r.arrayBuffer()));
   const t=(b[0]===0x1f&&b[1]===0x8b)?await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'))).text():new TextDecoder().decode(b);
   return JSON.parse(t);
 }
@@ -854,11 +857,30 @@ render();
 var ARRANCO=false;   // var: render puede llamarse antes de esta línea
 function carga(err){$('loading').hidden=false;$('rueda').hidden=!!err;$('cargaT').textContent=err||'Cargando información';$('cargaT').classList.toggle('error',!!err)}
 Promise.allSettled([cargarPlan(),cargarTE(),cargarAsis(),cargarBases(true)]).then(()=>{ARRANCO=true;render()});
-setInterval(cargarAsis,CFG.CADA_ASIS*1000);
-setInterval(()=>cargarBases(),CFG.CADA_BASES*1000);
-setInterval(cargarPlan,CFG.CADA_PLAN*1000);
-setInterval(cargarTE,CFG.CADA_TE*1000);
-setInterval(render,30000);   // el estado cambia con la hora aunque no lleguen datos nuevos
+/* Actualización sola, sin recargar (recargar saca la pantalla completa). Cada 15 s se mira qué fuente ya toca pedir
+   según la hora real: así, si el navegador frena o congela los relojes de la página (pantalla apagada, ventana tapada,
+   ahorro de energía), en cuanto vuelve se pone al día. Cada fuente tiene un solo pedido a la vez. */
+const FUENTES=[{f:cargarBases,cada:CFG.CADA_BASES},{f:cargarPlan,cada:CFG.CADA_PLAN},{f:cargarTE,cada:CFG.CADA_TE},{f:cargarAsis,cada:CFG.CADA_ASIS}];
+for(const x of FUENTES)x.ult=Date.now();
+function tick(forzar){
+  if(!ARRANCO)return;
+  const n=Date.now();
+  for(const x of FUENTES){
+    if(x.va||(!forzar&&n-x.ult<x.cada*1000))continue;
+    x.ult=n;x.va=true;
+    Promise.resolve().then(()=>x.f()).catch(()=>{}).finally(()=>{x.va=false});
+  }
+  render();   // el estado cambia con la hora aunque no lleguen datos nuevos
+}
+setInterval(()=>tick(),15000);
+// Al volver a verse la página (se prendió la pantalla, se destapó la ventana) o volver internet: pedir todo ya
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){tick(true);pantallaPrendida()}});
+addEventListener('online',()=>tick(true));
+addEventListener('focus',()=>tick(true));
+// Que la tele o la PC no apaguen la pantalla mientras la página está a la vista (si el navegador lo permite)
+let WL=null;
+async function pantallaPrendida(){try{if(navigator.wakeLock&&!WL){WL=await navigator.wakeLock.request('screen');WL.addEventListener('release',()=>{WL=null})}}catch(e){}}
+pantallaPrendida();
 </script>
 </body>
 </html>
