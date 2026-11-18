@@ -764,7 +764,10 @@ const EMPRESAS_EXACTAS=['Pendiente-097','Región Zona Limpia-090','EMPRESA ISMAE
 const FIDEICOMISO_EXACTAS=['CAP-017'];
 const OPERATIVOS_EXACTAS=['Limpio-099','Repetido-000','Playas-092','En proceso-093','-','Derivado-095','Pala-089','Agenda - No confirmó fecha-094','Agenda - Cancelado-9999','Hecho-098'];
 const MUNI_MAP={A:'Municipio A',B:'Municipio B',C:'Municipio C',CH:'Municipio CH',D:'Municipio D',E:'Municipio E',F:'Municipio F',G:'Municipio G','-':'Sin municipio'};
-const DEFAULT_CATS=new Set(['Basura fuera del contenedor','Bolsas ABC','Contenedor - Basural','Contenedor desbordado','Limpieza espacio público','Papeleras','Residuos esparcidos','Residuos reciclables','Voluminosos','Voluminosos - Escombro','Voluminosos - Poda']);
+// Desde el 17/11/2026 el sistema guarda casi todos los reclamos nuevos sin el nombre del incidente (solo el número,
+// que el Grafana no trae). Esos van en el filtro "Sin incidente", marcado de entrada, para que cuenten en los totales.
+const SIN_INC='Sin incidente';
+const DEFAULT_CATS=new Set([SIN_INC,'Basura fuera del contenedor','Bolsas ABC','Contenedor - Basural','Contenedor desbordado','Limpieza espacio público','Papeleras','Residuos esparcidos','Residuos reciclables','Voluminosos','Voluminosos - Escombro','Voluminosos - Poda']);
 const BAR_COLORS=['#1D9E75','#185FA5','#EF9F27','#D85A30','#888780'];
 const BAR_LABELS=['Resueltos en ≤ 24h','Resueltos 24h – 48h','Resueltos 48h – 72h','Resueltos > 72h','Sin resolver'];
 
@@ -772,7 +775,7 @@ let allData=[], isRange=false, chartRes=null, chartPct=null, chartUnicos=null;
 let globalDatos=[], globalDesde=null, globalHasta=null;
 let currentMode='todos', activeCats=new Set(DEFAULT_CATS), presentCatsGlobal=[];
 let lastMuns=[], lastMunMap={};
-const RECLAMOS_SESSION_KEY='com.reclamos.filters';
+const RECLAMOS_SESSION_KEY='com.reclamos.filters.v2';
 let dataVersion=0, filteredCacheKey='', filteredCache=[];
 
 function readReclamosState(){
@@ -837,7 +840,7 @@ function esValido(r){
   return t==='VALIDO'||t==='NOVALIDOATENDIDO';
 }
 function enCat(r){
-  const inc=getCol(r,'incidente')||'';
+  const inc=String(getCol(r,'incidente')||'').trim()||SIN_INC;
   return activeCats.has(inc);
 }
 function enTranspValor(r,sel){
@@ -943,7 +946,7 @@ async function fetchFromSheets(){
       if(!isRange){toggleRange();} // toggleRange() ya invierte isRange (false→true) — asignarlo antes lo revertía a false
     }
     // Build cat chips from present cats
-    const presentCats=[...new Set(allData.map(r=>getCol(r,'incidente')||'').filter(Boolean))].sort();
+    const presentCats=[...new Set(allData.map(r=>String(getCol(r,'incidente')||'').trim()||SIN_INC))].sort((a,b)=>a===SIN_INC?-1:b===SIN_INC?1:a.localeCompare(b));
     presentCatsGlobal=presentCats;
     activeCats=new Set(presentCats.filter(c=>DEFAULT_CATS.has(c)));
     restoreReclamosState(presentCats,ayer);
