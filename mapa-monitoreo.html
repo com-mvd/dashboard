@@ -394,6 +394,14 @@ function nombreUnidad(u,n){
   return {DG:'DG '+num,ROSADO:'Rosado '+num,SAB:'Salir Adelante B'+num,VCVB:'Vos con Voz B'+num,CAP:'CAP (fideicomiso)'}[k]||u;
 }
 const TURNO_DEF={Matutino:[360,660],Vespertino:[780,1080],Nocturno:[1260,1590]};
+const cortoUnidad=u=>{const k=/^[A-Z]+/.exec(u)[0],num=u.slice(k.length);return ({SAB:'SA B',VCVB:'VCV B',DG:'DG ',DINALI:'DINALI ',ROSADO:'Rosado '}[k]||'')+num||'CAP'};
+/* Unidad de ZL que tiene tareas en la base pero no figura en la asistencia (p. ej. si la pestaña quedó sin historia,
+   como pasó el 18/11/2026): se muestra igual, con el horario estándar del turno, y solo en los turnos en que tiene tareas. */
+function zlSinAsis(u,n,turno){
+  const [s,e]=TURNO_DEF[turno];
+  return {id:'z:'+u+'|'+turno,zl:true,sinAsis:true,u,nombre:nombreUnidad(u,n),corto:cortoUnidad(u),grupo:EMPRESA[/^[A-Z]+/.exec(u)[0]]||'',turno,s,e,
+    plan:'horario estándar del turno (no figura en la planilla de asistencia)',dias:0};
+}
 function leerAsis(rows){
   const W=ahora(),hoy=diaDe(W),lim=hoy-CFG.ASIS_DIAS*DIA,dow=new Date(W).getUTCDay();
   const g=new Map();
@@ -416,8 +424,7 @@ function leerAsis(rows){
     if(o.u==='CAP')continue;   // CAP (fideicomiso) no se le asigna: solo reportan al terminar, así que no se controla
     if(o.dias.size<3||!o.dows.get(dow))continue;   // sale poco, o nunca un día como hoy (p. ej. fines de semana)
     const [s,e]=o.a.length>=3?[med(o.a),med(o.b)]:TURNO_DEF[o.turno];
-    const k=/^[A-Z]+/.exec(o.u)[0],num=o.u.slice(k.length);
-    out.push({id:'z:'+o.u+'|'+o.turno,zl:true,u:o.u,nombre:nombreUnidad(o.u,o.emp),corto:({SAB:'SA B',VCVB:'VCV B',DG:'DG ',DINALI:'DINALI ',ROSADO:'Rosado '}[k]||'')+num||'CAP',grupo:EMPRESA[/^[A-Z]+/.exec(o.u)[0]]||'',turno:o.turno,s,e,
+    out.push({id:'z:'+o.u+'|'+o.turno,zl:true,u:o.u,nombre:nombreUnidad(o.u,o.emp),corto:cortoUnidad(o.u),grupo:EMPRESA[/^[A-Z]+/.exec(o.u)[0]]||'',turno:o.turno,s,e,
       plan:`horario típico de las últimas ${CFG.ASIS_DIAS/7} semanas (${o.a.length} días con horas)`,dias:o.dias.size});
   }
   return out.sort((x,y)=>x.u.localeCompare(y.u,'es',{numeric:true}));
@@ -425,7 +432,7 @@ function leerAsis(rows){
 async function cargarAsis(){
   try{
     const z=leerAsis(await hoja(CFG.ASIS,CFG.ASIS_PESTANA));
-    if(!z.length)throw new Error('no se encontraron unidades (¿cambió la pestaña «'+CFG.ASIS_PESTANA+'»?)');
+    if(!z.length)throw new Error('la pestaña «'+CFG.ASIS_PESTANA+'» no tiene historia: las unidades de ZL salen de la base, con el horario estándar del turno');
     DATA.zl=z;DATA.zlAt=Date.now();DATA.zlErr='';MATCH.clear();
   }catch(e){DATA.zlErr='Asistencia empresas: '+e.message}
   pintar();
@@ -460,11 +467,14 @@ async function cargarBases(){
 
 /* ============================== MODELO ============================== */
 const MATCH=new Map(); // nombre en la base -> [ids de la planilla]
+let ZL_AHORA=[];   // unidades de ZL de este armado: las de la asistencia y las que solo están en la base
 function emparejar(t){
-  if(MATCH.has(t))return MATCH.get(t);
   // primero las unidades de las empresas de ZL (DG1, DINALI 4, ROSADO 2…): una por turno
-  const u=unidad(t);let ids=u?(DATA.zl||[]).filter(z=>z.u===u).map(z=>z.id):[];
-  if(!ids.length){
+  const u=unidad(t);
+  if(u){const ids=ZL_AHORA.filter(z=>z.u===u).map(z=>z.id);if(ids.length)return ids}   // sin cache: la lista cambia con las agregadas
+  if(MATCH.has(t))return MATCH.get(t);
+  let ids=[];
+  {
     const T=toks(t);let best=0;
     for(const p of DATA.plan||[]){const s=parecido(T,p.tok);if(s>best){best=s;ids=[p.id]}else if(s&&s===best)ids.push(p.id)}
   }
@@ -504,7 +514,21 @@ function elegir(cands,t){let b=cands[0],bd=Infinity;for(const p of cands){const 
 function armar(){
   const W=ahora(),hoy=diaDe(W),m=minDe(W);
   const nuevo=p=>({...p,pend:[],done:[],per:{},base:new Set()});
-  const P=(DATA.plan||[]).map(nuevo).concat((DATA.zl||[]).map(nuevo));
+  ZL_AHORA=(DATA.zl||[]).slice();
+  const conAsis=new Set(ZL_AHORA.map(z=>z.u)),extra=new Map();
+  for(const k of KEYS){
+    const b=DATA.bases[k];if(!b)continue;
+    for(const [it,t] of b.pend.map(x=>[x,W]).concat(b.done.map(x=>[x,x.f]))){
+      const u=unidad(it.t);if(!u||u==='CAP'||conAsis.has(u))continue;
+      const cands=Object.keys(TURNO_DEF).map(tn=>{const z=zlSinAsis(u,it.t,tn);ventana(z,W);return z});
+      const z=elegir(cands,t);
+      if(t!==W&&distV(z,t)>60*60000)continue;   // cierre fuera de todo turno de hoy (p. ej. de ayer a la tarde)
+      const x=extra.get(z.id)||(extra.set(z.id,{z,pend:0,done:0}),extra.get(z.id));x[t===W?'pend':'done']++;
+    }
+  }
+  // un turno se agrega si tiene asignadas o 2 cierres o más (un cierre suelto suele ser la cola del turno anterior)
+  ZL_AHORA=ZL_AHORA.concat([...extra.values()].filter(x=>x.pend||x.done>=2).map(x=>x.z));
+  const P=(DATA.plan||[]).map(nuevo).concat(ZL_AHORA.map(nuevo));
   for(const p of P)ventana(p,W);
   const byId=new Map(P.map(p=>[p.id,p]));
   const fuera=new Map();
