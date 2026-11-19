@@ -82,12 +82,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sh input{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:6px 10px;border-radius:8px;font:inherit;font-size:13px}
 .list{flex:1;overflow:auto;scrollbar-width:none}
 .list::-webkit-scrollbar,.ficha::-webkit-scrollbar{display:none}
-.it{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--soft);cursor:pointer}
+.it{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:4px 14px;line-height:1.3;border-bottom:1px solid var(--soft);cursor:pointer}
 .it:hover{background:var(--soft)}
 .it.sel{background:var(--soft)}
-.it .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.it .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:220px}
 .it .st{font-size:12px;font-weight:650;color:var(--c);white-space:nowrap;text-align:right}
-.it .d{grid-column:1/-1;font-size:11.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.it .d{font-size:11px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .empty{padding:22px;text-align:center;color:var(--mute);font-size:13px}
 
 /* ficha */
@@ -123,13 +123,20 @@ button{font:inherit;color:inherit;cursor:pointer}
 .pop .leaflet-popup-content{margin:12px 14px;font:13px/1.4 "DM Sans",system-ui,sans-serif}
 .pop .leaflet-popup-tip{background:var(--card);border:1px solid var(--line);box-shadow:none}
 .pp-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.pp-h b{font-size:15px;line-height:1.2}
+.pp-h b{font-size:15px;line-height:1.2;white-space:nowrap}
 .pp-h .badge{flex:none}
 .pp-s{color:var(--faint);font-size:11.5px;margin-top:2px}
 .pp dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:10px 0 0;padding-top:9px;border-top:1px solid var(--line);font-size:12.5px}
 .pp dt{color:var(--faint)}
 .pp dd{margin:0;font-weight:600;text-align:right}
 .pp-n{margin-top:8px;font-size:11px;color:var(--faint)}
+/* Recurso elegido: su etiqueta va fija arriba a la derecha del mapa, así no tapa los puntos de su recorrido */
+.selcard{position:absolute;top:12px;right:14px;z-index:600;width:max-content;min-width:260px;max-width:calc(100% - 28px);background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.4);padding:12px 14px;font:13px/1.4 "DM Sans",system-ui,sans-serif}
+.selcard .x{position:absolute;top:6px;right:8px;border:0;background:transparent;color:var(--mute);font-size:14px;padding:2px 4px}
+.selcard .x:hover{color:var(--ink)}
+.selcard .pp-h{padding-right:18px}
+.selcard .ley{display:flex;gap:14px;margin-top:9px;padding-top:8px;border-top:1px solid var(--line);font-size:11.5px;color:var(--mute)}
+.selcard .ley i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .nl{box-sizing:border-box;font:600 11.5px/17px "DM Sans",system-ui,sans-serif;padding:0 7px;white-space:nowrap;color:var(--ink);background:color-mix(in srgb,var(--card) 88%,transparent);border:1px solid var(--line);border-radius:7px;text-align:center}
 .leaflet-tooltip.lbl{padding:1px 7px;font-size:11.5px;font-weight:600;background:color-mix(in srgb,var(--card) 88%,transparent)}
 .leaflet-tooltip.lbl:before{display:none}
@@ -160,6 +167,7 @@ button{font:inherit;color:inherit;cursor:pointer}
     <div id="map"></div>
     <div class="clock num" id="clock"><span id="hora">--:--</span></div>
     <div class="actu num" id="actu" hidden></div>
+    <div class="selcard" id="selcard" hidden></div>
     <div class="mtools">
       <button class="ic" id="bTema" title="Tema claro / oscuro">◐</button>
       <button class="ic" id="bFs" title="Pantalla completa (F)">⛶</button>
@@ -183,7 +191,9 @@ const CFG={
   ASIS_PESTANA:'Asistencia',
   ASIS_DIAS:28,   // se miran las últimas 4 semanas
   GRACIA_ZL:30,   // el horario de las empresas es estimado: min de espera antes de avisar que no arrancó
-  POCAS:2,        // con 1 o 2 tareas asignadas: "Pocas tareas"
+  ROJO:1,         // Reclamos y ZL: con 0 o 1 asignadas, "Sin tarea" (rojo)
+  POCAS:3,        // Reclamos y ZL: con 2 o 3, "Pocas tareas" (amarillo); con 4 o más, con tarea (verde)
+  POCAS_AB:1,     // Agenda y bolsones: con 0, "Sin tarea"; con 1, "Pocas tareas"; con 2 o más, con tarea
   PARADO:60,      // min sin cerrar nada teniendo tareas: "Parado"
   CIERRE:45,      // últimos min del turno sin tareas: "Cierre de turno" (no es alerta)
   GRACIA:15,      // min después de la hora de entrada antes de avisar "Sin confirmar salida"
@@ -199,12 +209,12 @@ const BASES={
   bol:{arch:'bolsones.json',     clave:'bolsones',   nombre:'Bolsones',    corto:'B'}
 };
 const KEYS=Object.keys(BASES);
-/* Estados de un recurso planificado. o = orden en la lista; al = cuenta como alerta */
+/* Estados de un recurso planificado. o = orden en la lista (sin tarea, poca tarea, parado, sin confirmar); al = cuenta como alerta */
 const ST={
   sin_tarea: {l:'Sin tarea',            c:'--sin',    o:0, al:1},
-  sin_marca: {l:'Sin confirmar salida', c:'--marca',  o:1, al:1},
+  sin_marca: {l:'Sin confirmar salida', c:'--marca',  o:3, al:1},
   parado:    {l:'Parado',               c:'--parado', o:2, al:1},
-  pocas:     {l:'Pocas tareas',         c:'--pocas',  o:3, al:1},
+  pocas:     {l:'Pocas tareas',         c:'--pocas',  o:1, al:1},
   ok:        {l:'Trabajando',           c:'--ok',     o:4},
   especial:  {l:'Tarea especial',       c:'--esp',    o:5},
   te_espera: {l:'Tarea esp. por iniciar',c:'--esp',   o:6},
@@ -338,18 +348,22 @@ async function cargarPlan(){
 function leerTE(rows){
   const hi=rows.findIndex(r=>/^transportista/.test(norm(r[7]))&&/^estado/.test(norm(r[8])));
   if(hi<0)return null;
-  const L=[];let cur='',curMun='';
+  const L=[];let cur='',curMun='',curLinks=[],curTarea='';
+  const codigos=r=>[...[r[4],r[5],r[6]].join(' ').matchAll(/maps\.app\.goo\.gl\/([A-Za-z0-9_-]+)/g)].map(m=>m[1]);
   for(const r of rows.slice(hi+1)){
     if(/^(matutino|vespertino|nocturno)$/.test(norm(r[0]))){cur='';curMun='';continue}
     const t=String(r[7]||'').trim(),bloque=String(r[2]||'').trim(),mun=String(r[3]||'').trim();
     if(t)cur=t;else if(bloque)cur='';
     if(mun)curMun=mun;else if(bloque)curMun='';   // el 2º trabajador de un barrio viene sin municipio: es el del bloque
     r[3]=curMun;
+    const lk=codigos(r);
+    const tar=String(r[4]||'').split('\n')[0].trim();
+    if(lk.length||tar||bloque){curLinks=lk;curTarea=tar||String(r[1]||'').trim()}   // sin tarea ni bloque: es otro trabajador de la misma tarea
     if(!cur)continue;
     const est=norm(r[8]);
-    L.push({nombre:cur,tarea:String(r[4]||'').split('\n')[0].trim()||String(r[1]||'').trim(),mun:String(r[3]||'').trim(),
+    L.push({nombre:cur,tarea:curTarea,mun:String(r[3]||'').trim(),
       est:/en proceso/.test(est)?'proc':/realizada/.test(est)?'real':/aceptada|envia/.test(est)?'acep':est?'otro':'plan',
-      ini:parseHM(r[9]),fin:parseHM(r[10])});
+      ini:parseHM(r[9]),fin:parseHM(r[10]),links:curLinks});
   }
   return L;
 }
@@ -562,8 +576,15 @@ function armar(){
   }
   for(const mun in porMun){
     const c=centroMun(mun),arr=porMun[mun];
-    arr.forEach((p,i)=>{const a=i/arr.length*2*Math.PI,r=arr.length>1?.007:0;p.pos=[c[0]+r*Math.sin(a),c[1]+r*1.2*Math.cos(a)];p.approx='mun';p.mun=mun});
+    arr.forEach((p,i)=>{
+      const a=i/arr.length*2*Math.PI;let r=arr.length>1?.007:0,q=c;
+      for(;r>.0005;r*=.7){q=[c[0]+r*Math.sin(a),c[1]+r*1.2*Math.cos(a)];if(enMun(mun,q))break}   // si cae al agua o fuera del municipio, se acerca al centro
+      p.pos=r>.0005?q:c.slice();p.approx='mun';p.mun=mun;
+    });
   }
+  // Varios en el mismo lugar de una tarea especial (p. ej. dos motocarros en un barrio): se abren un poco para que se vean los dos
+  const mismo={};for(const p of P)if(p.approx==='te'){const k=p.pos.join(',');(mismo[k]||(mismo[k]=[])).push(p)}
+  for(const k in mismo){const arr=mismo[k];if(arr.length<2)continue;arr.forEach((p,i)=>{const a=i/arr.length*2*Math.PI;p.pos=[p.pos[0]+.0006*Math.sin(a),p.pos[1]+.0007*Math.cos(a)]})}
   return {P,fuera:[...fuera.values()],W,m};
 }
 const munKey=s=>{const x=String(s||'').toUpperCase().trim();if(MUNI_GEO&&MUNI_GEO[x])return x;const m=/^(CH|[A-G])\b/.exec(x);return m&&MUNI_GEO&&MUNI_GEO[m[1]]?m[1]:''};
@@ -580,14 +601,52 @@ function munDe(p){
   return '';
 }
 const CMUN={};
+/* ¿El punto [lat,lon] está dentro del municipio? (par-impar sobre los anillos, que vienen como [lon,lat]) */
+function enMun(id,[la,ln]){
+  let dentro=false;
+  for(const pol of MUNI_GEO[id]||[])for(const r of pol)for(let i=0,j=r.length-1;i<r.length;j=i++){
+    const [xi,yi]=r[i],[xj,yj]=r[j];
+    if((yi>la)!==(yj>la)&&ln<(xj-xi)*(la-yi)/(yj-yi)+xi)dentro=!dentro;
+  }
+  return dentro;
+}
+/* Centro del municipio: el punto de adentro más lejos del borde (el promedio de los vértices caía en el río en los de la costa) */
 function centroMun(id){
   if(CMUN[id])return CMUN[id];
   let best=null;for(const pol of MUNI_GEO[id])if(!best||pol[0].length>best.length)best=pol[0];
-  let la=0,ln=0;for(const [x,y] of best){la+=y;ln+=x}
-  return CMUN[id]=[la/best.length,ln/best.length];
+  let a=90,b=-90,c=180,d=-180;for(const [x,y] of best){a=Math.min(a,y);b=Math.max(b,y);c=Math.min(c,x);d=Math.max(d,x)}
+  const borde=(la,ln)=>{let m=Infinity;for(let i=0,j=best.length-1;i<best.length;j=i++){
+    const [x1,y1]=best[j],[x2,y2]=best[i],dx=x2-x1,dy=y2-y1,t=Math.max(0,Math.min(1,((ln-x1)*dx+(la-y1)*dy)/(dx*dx+dy*dy||1)));
+    m=Math.min(m,Math.hypot(ln-x1-t*dx,la-y1-t*dy))}return m};
+  let mejor=null,md=-1;const N=40;
+  for(let i=1;i<N;i++)for(let k=1;k<N;k++){
+    const q=[a+(b-a)*i/N,c+(d-c)*k/N];if(!enMun(id,q))continue;
+    const m=borde(q[0],q[1]);if(m>md){md=m;mejor=q}
+  }
+  if(!mejor){let la=0,ln=0;for(const [x,y] of best){la+=y;ln+=x}mejor=[la/best.length,ln/best.length]}
+  return CMUN[id]=mejor;
+}
+/* Lugar de una tarea especial: el primer link de Google Maps de la tarea (en los recorridos "desde … hasta", el inicio) */
+/* Lugar fijo de cada tarea: el link corto de Google Maps (maps.app.goo.gl/<código>) que trae la tarea en la planilla,
+   resuelto una sola vez el 19/11/2026 (147 links). Provisorio: cuando las tareas especiales estén en la base, la ubicación sale de ahí.
+   Una tarea con un link que no está acá se ubica como antes (último cierre, sus asignadas o el municipio). */
+const TE_LUGARES={"S4X59tz6pkjZfLbG7":[-34.910722,-56.213377],"pre49pza47VAbKuK9":[-34.914805,-56.180435],"FFFw3hxA5HE6WJAE8":[-34.88988,-56.186109],"CSH5VSFWxQUovk9E6":[-34.914764,-56.179905],"dskedo2gnxSYowHm7":[-34.929071,-56.160297],"eDN4rn1Wsrxb7HNT9":[-34.928898,-56.159912],"tYGtzorfT5yWrEEs5":[-34.934154,-56.159743],"MmW4wBKYpc3W7v6GA":[-34.929121,-56.161159],"ch13ic8fkZjfcKYL6":[-34.909532,-56.142567],"WYd3u4aQ1U7K8pBu8":[-34.909535,-56.142576],"EfEi9dSP5yNLt3eu7":[-34.898108,-56.119583],"GUXRgNVVbM5DkkFZ6":[-34.902885,-56.129748],"maL1YruuhzxaYur56":[-34.89472,-56.0961],"wXcRwJwKjYAqjJfy5":[-34.882144,-56.035109],"LAP1T7ojZxFHHk9V9":[-34.861751,-56.212774],"qHuMayjJoiHJxk1K9":[-34.854655,-56.222108],"NkubFmMui9b4oQXf8":[-34.808457,-56.221333],"35srAh62U69XjY647":[-34.800721,-56.224205],"pf2vG4ddvEMte8wz8":[-34.872957,-56.214738],"LCZABQ3UaPwAyTmdA":[-34.89459,-56.16385],"iGA8dsV27zaVfpXs8":[-34.893727,-56.16173],"jRn3ugCUMbXDqVU89":[-34.89305,-56.16112],"s9sNP1iyq2UwP9j76":[-34.89253,-56.15948],"ymyUWATAHmF3JW7S9":[-34.89168,-56.15636],"LTNF7DPD4ifq4fDg8":[-34.891397,-56.156471],"f6P3pckH3wEFnBrq5":[-34.890542,-56.153018],"UoFKvYHtkfbauE7z8":[-34.89019,-56.15054],"jVokQhxxX5fC83xC9":[-34.888643,-56.146847],"TXy2c55yn6PdHkEt5":[-34.89002,-56.151069],"ht5Pc1YtAyMTTdqw5":[-34.89042,-56.155],"PGSYkkgtwenGZfsh9":[-34.89036,-56.15532],"qGtyEuRcZ2iYupNs9":[-34.88772,-56.1535],"xV9yzzsX74iWJyJa9":[-34.88694,-56.15359],"f5Kd3rnZbkuQSLtx5":[-34.88404,-56.1523],"AbKVnbEYJpZtmPW1A":[-34.88356,-56.15272],"Sw6A7fjRZPSR3dcu6":[-34.882494,-56.153207],"pCyEPfkyxcdXHVhQ7":[-34.88247,-56.1534],"5KJb1xRfY6MCPgv37":[-34.88344,-56.15475],"GEwEQiWzSDjyq1vn9":[-34.88344,-56.15503],"5BCMywrs2YQ7SvdM7":[-34.884812,-56.156439],"BhkJyqaS6eu2pXgv6":[-34.88537,-56.1567],"1HaDogxcofp2mooW9":[-34.88701,-56.15827],"v3qwqXta1GHkQDXu5":[-34.88739,-56.15839],"5tRcJXTGke9N8Yxh7":[-34.88927,-56.16017],"KHRaQScPZqK2e6Ny6":[-34.889934,-56.160469],"fVggjcxevqaLELFG7":[-34.89145,-56.16177],"FF5YtLTow9LxJBTj6":[-34.891733,-56.162215],"JY7kajV6ohuApjE19":[-34.891481,-56.16223],"7putuTKRveoDwi3n6":[-34.879286,-56.147828],"PiUea4jXkaHy9bqz8":[-34.871441,-56.135261],"ggBpPTS6FJFVGtQU8":[-34.835737,-56.1704],"Srz5Uj4YJTAyHxpC6":[-34.85489,-56.222336],"3AGFuFUQtPo4Bp1MA":[-34.862341,-56.21194],"rae2pxHEMxJBsxsE9":[-34.844079,-56.19357],"5GkzHW9vEaB4JoUr9":[-34.873041,-56.205412],"osfzpbqz27TyTuKE9":[-34.888074,-56.165807],"CNARCRM7LCj9HSZf8":[-34.893627,-56.164133],"rfE4oRd4XkjcBnSM8":[-34.880123,-56.092617],"utbXzoyv292B5pvB9":[-34.860977,-56.159442],"qDNtPjm1CpyPQ5tQ8":[-34.872987,-56.210976],"rpZnkGFQ1NCUCzLX8":[-34.868943,-56.239306],"1sffFecTahWAe9Yy6":[-34.866498,-56.2363],"2s48tvns5gwGQ5Rr5":[-34.869631,-56.233938],"X6ouyTZcbBLW81mf7":[-34.86769,-56.228339],"7BXVY1N9wGjbLHfSA":[-34.890162,-56.248106],"amgRcPCCDbpaee8UA":[-34.894571,-56.2472],"E9TtZ8LsZn16kEMb7":[-34.855611,-56.373889],"ioxtv6gvhyhhaBCv9":[-34.890684,-56.244843],"RL72JJ3WxPp9FYs5A":[-34.868331,-56.24647],"SyH7Fqh8XiVpjfEM7":[-34.849062,-56.263307],"kRobvXy7PjBZQUJM9":[-34.879211,-56.12451],"VdDSksZHXvNQghRi9":[-34.805485,-56.148342],"rnJnU91cZtZ9y8fx9":[-34.780572,-56.035459],"biciWDEwbtYNws9g9":[-34.84919,-56.111992],"yjQQVZvC6CsFT4UL9":[-34.813975,-56.238706],"q4K7SHhMx3t1obs98":[-34.85878,-56.148585],"gxjN9o8sHTgyeCuS9":[-34.843329,-56.187039],"bHuo2b4GgJdE7iom7":[-34.835202,-56.118976],"fuuAP3SKNbPqbjTS9":[-34.880697,-56.05029],"7XKvK2WAN3Gdijmy5":[-34.874164,-56.25133],"VHWkq4VaA6byA2Lr8":[-34.894571,-56.2472],"n317MSepBE8PSM1RA":[-34.881876,-56.247542],"dadCDVPhAQ8EDm7D7":[-34.864411,-56.227532],"8o7Ha7K4zsnJ5RJx7":[-34.850417,-56.215398],"EuZKXDeg5bLbVFym6":[-34.872722,-56.210444],"MqtoeV4dySdHWF7A6":[-34.864665,-56.215489],"hDC5yswQnaqXXjge7":[-34.867881,-56.217047],"hR8qpEgT9ZciyhBQ8":[-34.870707,-56.215417],"Acb3tnc4pi8WaNLT9":[-34.87029,-56.218779],"7pjmvRSm7mPMafyh7":[-34.865801,-56.213544],"m6tSju9PGoPUaXvNA":[-34.870631,-56.2182],"3h9ccCRHKhvuwAQ18":[-34.866301,-56.212672],"dx6w32rrDPuLhzua9":[-34.871555,-56.21688],"PYY1a2krkPGdBiF56":[-34.868035,-56.211017],"3oeVtxA891Umfon66":[-34.874206,-56.21057],"me1w47UDfURKUpLf8":[-34.871723,-56.207582],"PZMkBE3kbw2shTpM9":[-34.868442,-56.213774],"2hW8MugqWMr9y4Ma9":[-34.790876,-56.346572],"1JVqjqrAZFda5mkh8":[-34.787449,-56.347749],"P7vfkvnmbGWJ2ieW9":[-34.785836,-56.353503],"hsatYu72ZJB9o1A58":[-34.785789,-56.354503],"QvnZfw3NVerfLGJbA":[-34.786494,-56.355003],"mRWDBAKPpkVkkpqK7":[-34.791388,-56.35214],"mMswTGqWkD9RUPeP7":[-34.791758,-56.353385],"6mSuhG6HcZDa3kje9":[-34.799981,-56.335434],"FfQmjaPKeV9H8ACRA":[-34.850039,-56.282944],"wXBH26sbmpRQjxVN7":[-34.847912,-56.280311],"smwuwT6hFVvcL1oo8":[-34.847459,-56.282854],"dhVwCG1uch8Qwd4D9":[-34.845556,-56.280159],"GBR4aPrvB3KVsrFM6":[-34.850361,-56.248333],"s1BDBCvFWZEbXrnE9":[-34.856204,-56.220489],"DBvp5mypGC2Fj4df7":[-34.913424,-56.167696],"RxKQMueVYyqYkwTA9":[-34.912191,-56.196052],"PmyZbAgH3V2VKZGCA":[-34.898106,-56.166016],"kxHEmKvMnfoqHYNMA":[-34.855218,-56.131675],"CykEPimwnXV2BSzj8":[-34.894131,-56.155759],"dSk4DhhCCwsAeoMg9":[-34.899109,-56.122913],"xgwZ3c7Yf6Wm1gmR8":[-34.818532,-56.235202],"R3iwC21RGBvAnVpX8":[-34.813324,-56.095775],"A1gntjWP5wzNQkwk7":[-34.867048,-56.060599],"WMUrxZEKa7rs3Hbz5":[-34.870962,-56.135115],"ZxZ9YoFr5NvEPX5w8":[-34.869637,-56.134864],"Mf29S4YgMfe3pAmA7":[-34.88094,-56.1537],"DwJx7zjgW9kEYLKv6":[-34.894993,-56.164781],"VQFQ1Dp2mxwt1Xyg7":[-34.875506,-56.035405],"VvwkqHix4SjnGKhV7":[-34.829177,-56.141441],"rVcZJ8ncwVWbfJRf7":[-34.890319,-56.186825],"E9ij4L4K2FSuBss46":[-34.857014,-56.206455],"kYiJ5HfV8Bjiy2v68":[-34.86554,-56.215715],"2yHtK4psEYQwbaqLA":[-34.873124,-56.20924],"bo9ojNYzVofs4awHA":[-34.866914,-56.216493],"nqV3DWuHyTH7EHnk9":[-34.870638,-56.211451],"5mrZyMiJZDU7qA1j6":[-34.870714,-56.211682],"wTCrCAaNU8s2bZzd6":[-34.872613,-56.210414],"VKyfgvGqWk9Ths2J8":[-34.869729,-56.214103],"8BMhnipUgB2ATNc69":[-34.873019,-56.21128],"K6buAbZeBEDcuwL69":[-34.867965,-56.217217],"ZmmGjiSouCyar1TS7":[-34.871402,-56.21366],"qgqVVYdzuJxvEU6p6":[-34.869111,-56.218657],"gJ6ZC1rrPznnnuRR6":[-34.87227,-56.215767],"n7oP5mRrh2hDKiek9":[-34.871128,-56.213721],"j8JTWWVWspVbfmsJ9":[-34.876299,-56.20597],"f4LdPk1RFoesgwmu7":[-34.877912,-56.206059],"Xh2KjVFnRgkHKWEw9":[-34.872023,-56.21477],"U5Y9gDgXKJdDPXfK6":[-34.870266,-56.216875],"t9TJ76TcimotisAN9":[-34.890084,-56.126755],"vAB8C6f3aeKeR1Ad6":[-34.890921,-56.127758]};
+const lugarTE=x=>{const L=TE_LUGARES;if(!x||!x.links)return null;for(const c of x.links)if(L[c])return L[c];return null};
+/* Tarea especial que ubica al recurso: la que está haciendo; si no, la última que terminó; si no, la próxima. t = minuto del día. */
+function teUbic(p){
+  const it=p.te&&p.te.items;if(!it)return null;
+  const proc=it.find(x=>x.est==='proc'&&lugarTE(x));if(proc)return {x:proc,t:proc.ini??1440};   // la que está haciendo manda (sin hora de inicio, igual)
+  const real=it.filter(x=>x.est==='real'&&lugarTE(x)).sort((a,b)=>(b.fin??b.ini??0)-(a.fin??a.ini??0))[0];if(real)return {x:real,t:real.fin??real.ini??0};
+  const sig=it.find(x=>x.est!=='real'&&lugarTE(x));if(sig)return {x:sig,t:-1};
+  return null;
 }
 function posicion(p){
   let last=null;for(const d of p.done)if(d.la&&(!last||d.f>last.f))last=d;
+  const tu=teUbic(p);
+  // la tarea especial manda si la está haciendo o la terminó después de su último cierre en las bases
+  if(tu&&(!last||tu.t>=0&&tu.t>=minDe(last.f)&&diaDe(last.f)===diaDe(ahora()))){
+    p.pos=lugarTE(tu.x).slice();p.approx='te';p.teLugar=tu.x.tarea;return;
+  }
   if(last){p.pos=[last.la,last.ln];p.lastF=last.f;p.approx=false;return}
   let n=0,la=0,ln=0;for(const x of p.pend)if(x.la){la+=x.la;ln+=x.ln;n++}
   p.pos=n?[la/n,ln/n]:null;p.approx=!!n;
@@ -595,8 +654,8 @@ function posicion(p){
 /* Agenda/voluminosos y bolsones: no tienen "poca tarea" (o tienen tarea o no) */
 const esAgBol=p=>!p.zl&&(p.per.bol||p.per.age||/voluminoso/i.test(p.nombre));
 function juzgar(p,W,hoy,m){
-  posicion(p);
   const te=p.te=p.zl?null:teDe(p);
+  posicion(p);
   // hora de "ahora" para este recurso: la de la base más atrasada en la que tiene tareas (no se le cuenta como parado el atraso de la base)
   let ref=W;for(const k in p.per){const b=DATA.bases[k];if(b)ref=Math.min(ref,b.at)}
   p.ref=ref;
@@ -629,8 +688,14 @@ function juzgar(p,W,hoy,m){
     else st=min(p.E-W)<=CFG.CIERRE?'cierre':'sin_tarea';
   }
   else if(p.idle!=null&&p.idle>CFG.PARADO&&min(W-p.S)>CFG.PARADO)st='parado';
-  else if(n<=CFG.POCAS&&!cerrando&&!esAgBol(p))st='pocas';   // agenda y bolsones: con 1 o más ya están con tarea
-  else st='ok';
+  else if(cerrando)st='ok';
+  else{
+    // colores por asignadas: Reclamos y ZL 0-1 rojo, 2-3 amarillo, 4+ verde; agenda y bolsones 0 rojo, 1 amarillo, 2+ verde
+    const ab=esAgBol(p);
+    if(!ab&&n<=CFG.ROJO)st=te&&te.pend?'te_espera':min(p.E-W)<=CFG.CIERRE?'cierre':'sin_tarea';
+    else if(n<=(ab?CFG.POCAS_AB:CFG.POCAS))st='pocas';
+    else st='ok';
+  }
   p.st=st;
 }
 /* Qué recursos se miran: los que deberían estar trabajando ahora (dentro de su horario) y los que siguen en calle pasada su hora */
@@ -646,10 +711,20 @@ function detalle(p){
   if(S==='sin_marca')return p.zl?'suele salir '+hm(p.s)+' · sin cierres todavía':'debía entrar '+hm(p.s)+' · nada en la planilla';
   if(S==='especial')return p.te.proc.tarea+(p.te.proc.ini!=null?' · desde '+hm(p.te.proc.ini):'');
   if(S==='te_espera')return (p.te.items.find(x=>x.est==='acep'||x.est==='plan')||{}).tarea||'';
+  if(S==='sin_tarea'&&p.pend.length)return p.pend.length+' asignada'+(p.pend.length===1?'':'s')+(p.idle!=null?' · últ. actividad hace '+dur(p.idle):'');
   if(S==='sin_tarea')return p.idle!=null?'sin tareas · últ. actividad hace '+dur(p.idle):'sin tareas asignadas';
   if(S==='parado')return p.pend.length?'hace '+dur(p.idle)+' sin cerrar · '+p.pend.length+' asignadas':'hace '+dur(p.idle)+' sin actividad · '+p.te.pend+' tarea'+(p.te.pend===1?'':'s')+' especial'+(p.te.pend===1?'':'es')+' por hacer';
   if(S==='cierre')return 'termina '+est+hm(p.e);
   return (p.lastDone?'último cierre '+hhmm(p.lastDone):'sin cierres aún')+(p.rate?' · '+Math.round(p.rate)+'/h':'');
+}
+/* Para la lista, en un renglón: sin repetir lo que ya dice la etiqueta de estado */
+function detalleCorto(p){
+  const S=p.st,n=p.pend.length;
+  if(S==='sin_tarea')return (n?n+' asignada'+(n===1?'':'s')+' · ':'')+(p.idle!=null?'hace '+dur(p.idle)+' sin actividad':'sin actividad hoy');
+  if(S==='sin_marca')return (p.zl?'suele salir ':'debía entrar ')+hm(p.s);
+  if(S==='parado')return 'hace '+dur(p.idle)+(n?' · '+n+' asignada'+(n===1?'':'s'):' · '+p.te.pend+' TE por hacer');
+  if(S==='pocas')return n+' asignada'+(n===1?'':'s')+(p.lastDone?' · últ. cierre '+hhmm(p.lastDone):'');
+  return detalle(p);
 }
 const corto=n=>{const w=String(n).split(/\s+/);return w.length>2&&!/\by\b|&/i.test(n)?w[0]+' '+w[w.length-1]:n};
 
@@ -700,8 +775,8 @@ function chipsSvc(p){const ks=KEYS.filter(k=>p.per[k]);return ks.length?'<span c
 function fila(p){
   const s=ST[p.st]||{l:'Con actividad',c:'--off'};
   return `<div class="it" data-id="${esc(p.id)}" style="--c:var(${s.c})">
-    <div class="n">${esc(p.nombre)}</div><div class="st">${s.l}</div>
-    <div class="d">${esc(p.fuera?(p.done.length?'último cierre '+hhmm(Math.max(...p.done.map(d=>d.f))):'sin cierres hoy'):detalle(p))}</div></div>`;
+    <div class="n">${esc(p.nombre)}</div>
+    <div class="d">${esc(p.fuera?(p.done.length?'último cierre '+hhmm(Math.max(...p.done.map(d=>d.f))):'sin cierres hoy'):detalleCorto(p))}</div><div class="st">${s.l}</div></div>`;
 }
 /* Debajo de los indicadores: solo los que necesitan atención (o, si se tocó un indicador, los de ese grupo), en una lista simple */
 function lista(vis){
@@ -710,7 +785,7 @@ function lista(vis){
   const box=$('list'),sc=box.scrollTop;
   box.innerHTML=arr.length?arr.map(fila).join(''):`<div class="empty">${UI.filtro?'No hay recursos en este grupo.':'✓ Todos los que deberían estar trabajando tienen tarea.'}</div>`;
   box.scrollTop=sc;
-  box.querySelectorAll('[data-id]').forEach(r=>r.onclick=()=>{const m=MK.get(r.dataset.id);if(!m)return;if(POP===r.dataset.id){m.closePopup();return}MAP.panTo(m.getLatLng());m.openPopup()});
+  box.querySelectorAll('[data-id]').forEach(r=>r.onclick=()=>elegirRec(UI.sel===r.dataset.id?null:r.dataset.id));
   marcarFila();
 }
 const buscar=id=>MODEL&&(MODEL.P.find(p=>p.id===id)||MODEL.fuera.find(f=>f.id===id));
@@ -747,16 +822,19 @@ function ficha(){
 }
 
 /* ============================== MAPA ============================== */
-let MAP=null,TILE=null,TILEDARK=null,LAY=null,MUNL=null,fitKey='';
+let MAP=null,TILE=null,TILEDARK=null,LAY=null,MUNL=null,fitKey='',TOCADO=0;
 const isDark=()=>{const t=document.documentElement.dataset.theme;return t?t==='dark':matchMedia('(prefers-color-scheme:dark)').matches};
 const cv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function mapa(vis){
   if(!window.L){$('map').innerHTML='<div class="empty">No se pudo cargar el mapa (falta conexión a internet).</div>';return}
   if(!MAP){
-    MAP=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true,maxZoom:18}).setView([-34.86,-56.17],12);
+    MAP=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true,maxZoom:18,zoomSnap:.25,zoomDelta:.5}).setView([-34.86,-56.17],12);   // zoom de a 1/4 para encuadrar justo
+    // si alguien mueve o acerca el mapa a mano, se le deja así 2 min antes de volver a encuadrar solo
+    for(const ev of ['wheel','mousedown','touchstart','keydown'])$('map').addEventListener(ev,()=>{TOCADO=Date.now()},{passive:true});
     MAP.createPane('muni').style.zIndex=350;
     MAP.createPane('etq').style.zIndex=650;MAP.getPane('etq').style.pointerEvents='none';
     MUNL=L.layerGroup().addTo(MAP);LAY=L.layerGroup().addTo(MAP);
+    MAP.on('click',()=>{if(UI.sel)elegirRec(null)});   // clic afuera: vuelve a todos (también si el elegido no tiene ubicación)
     let zt;MAP.on('moveend',()=>{clearTimeout(zt);zt=setTimeout(render,120)});
     let rt;new ResizeObserver(()=>{MAP.invalidateSize();clearTimeout(rt);rt=setTimeout(()=>{fitKey='';render()},250)}).observe($('map'));
   }
@@ -775,15 +853,15 @@ function mapa(vis){
   const L2=filtrados(vis).filter(p=>p.pos&&TRABAJANDO.includes(p.st));
   const sel=UI.sel&&buscar(UI.sel);
   const pts=[],selPts=[];
-  // recorrido del seleccionado: cerrado hoy (verde, numerado por orden) y asignado (azul)
+  // recorrido del seleccionado: cerrado hoy (verde, numerado por orden) y asignado (naranja)
   if(sel){
-    const ok=cv('--ok'),blu=cv('--rec'),card=cv('--card');
+    const ok=cv('--ok'),nar=cv('--marca'),card=cv('--card');
     [...sel.done].filter(d=>d.la).sort((a,b)=>a.f-b.f).forEach((d,i)=>{
       L.circleMarker([d.la,d.ln],{radius:6,color:card,weight:1.5,fillColor:ok,fillOpacity:.95}).bindTooltip(`<b>✔ ${i+1} · cerrado ${hhmm(d.f)}</b> · ${BASES[d.k].nombre}<br>${esc(d.inc)}${d.cont?' · cont. '+esc(d.cont):''}<br>${esc(d.dir.split(',')[0])}`,{direction:'top'}).addTo(LAY);
       selPts.push([d.la,d.ln]);
     });
     for(const x of sel.pend)if(x.la){
-      L.circleMarker([x.la,x.ln],{radius:6,color:blu,weight:2.5,fillColor:card,fillOpacity:1}).bindTooltip(`<b>◔ Asignado</b> · ${BASES[x.k].nombre}<br>${esc(x.inc)}${x.cont?' · cont. '+esc(x.cont):''}<br>${esc(x.dir.split(',')[0])}`,{direction:'top'}).addTo(LAY);
+      L.circleMarker([x.la,x.ln],{radius:6,color:card,weight:1.5,fillColor:nar,fillOpacity:.95}).bindTooltip(`<b>◔ Asignado</b> · ${BASES[x.k].nombre}<br>${esc(x.inc)}${x.cont?' · cont. '+esc(x.cont):''}<br>${esc(x.dir.split(',')[0])}`,{direction:'top'}).addTo(LAY);
       selPts.push([x.la,x.ln]);
     }
   }
@@ -791,23 +869,35 @@ function mapa(vis){
   const marker=(p,col,alert,op)=>{
     const s=UI.sel===p.id,sz=s?40:(p.fuera?22:30),ic=tipoDe(p)[0];
     const m=L.marker(p.pos,{icon:L.divIcon({className:'pm-w',html:`<div class="pm${p.approx?' ap':''}${alert?' alert':''}" style="--pc:${col};opacity:${op};font-size:${p.fuera?11:s?18:14}px"><span>${ic}</span></div>`,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]}),keyboard:false,zIndexOffset:s?2000:alert?1000:0});
-    m.bindPopup(()=>popHtml(p),{className:'pop',closeButton:false,maxWidth:320,minWidth:230,offset:[0,-sz/2+6],autoPanPadding:[24,24]});
-    m.on('popupopen',()=>{POP=p.id;marcarFila()});m.on('popupclose',()=>{if(!PINTANDO){POP=null;marcarFila()}});
+    if(p.fuera){
+      m.bindPopup(()=>popHtml(p),{className:'pop',closeButton:false,maxWidth:320,minWidth:230,offset:[0,-sz/2+6],autoPanPadding:[24,24]});
+      m.on('popupopen',()=>{POP=p.id;marcarFila()});m.on('popupclose',()=>{if(!PINTANDO){POP=null;marcarFila()}});
+    }else m.on('click',()=>elegirRec(UI.sel===p.id?null:p.id));   // al tocar un recurso queda solo él, con su recorrido (tocándolo de nuevo, vuelven todos)
     MK.set(p.id,m);
     obst.push({pos:p.pos,sz});
     if(!p.fuera&&['pocas','sin_tarea','parado'].includes(p.st)||UI.sel===p.id)lbls.push({p,sz,txt:p.corto||corto(p.nombre)});   // nombre solo a los que necesitan atención (y al seleccionado)
     m.addTo(LAY);pts.push(p.pos);if(s)selPts.push(p.pos);
   };
-  if(UI.fuera&&!UI.filtro)for(const f of MODEL.fuera)if(f.pos)marker(f,cv('--off'),false,sel&&sel!==f?.3:.85);
-  for(const p of L2)marker(p,cv(grupoK(p)==='con'?'--ok':ST[p.st].c),   // en el mapa solo 4 colores: con tarea (verde), poca (amarillo), parado (violeta), sin tarea (rojo)
+  if(UI.fuera&&!UI.filtro&&!sel)for(const f of MODEL.fuera)if(f.pos)marker(f,cv('--off'),false,.85);
+  for(const p of sel?L2.filter(p=>p===sel):L2)marker(p,cv(grupoK(p)==='con'?'--ok':ST[p.st].c),   // en el mapa solo 4 colores: con tarea (verde), poca (amarillo), parado (violeta), sin tarea (rojo)
     ['sin_tarea','pocas','parado'].includes(p.st),sel&&sel!==p?.35:1);
-  const key=UI.sel+'|'+UI.filtro+'|'+pts.length;   // vuelve a encuadrar cuando cambia cuántos hay en el mapa (llega una fuente, alguien sale o termina)
-  if(key!==fitKey&&(selPts.length||pts.length)){
+  // Encuadre: en cada actualización se acerca o se aleja para que los recursos ocupen todo el mapa, con ~1 cm de margen
+  // entre el borde y el primer marcador (38 px + medio marcador). Si cambió el filtro o el elegido, encuadra enseguida;
+  // si no, solo si nadie tocó el mapa en los últimos 2 min. Si ya está encuadrado, no se mueve (así no se repite al redibujar).
+  const key=UI.sel+'|'+UI.filtro;
+  if((selPts.length||pts.length)&&(key!==fitKey||Date.now()-TOCADO>120000)){
     fitKey=key;
-    MAP.fitBounds(L.latLngBounds(selPts.length?selPts:pts),{padding:[50,50],maxZoom:selPts.length>1?16:selPts.length?14:13});
+    const M=38+15,der=sel?Math.min(320,MAP.getSize().x*.4):M;   // con un recurso elegido se deja libre el lugar de su etiqueta (arriba a la derecha)
+    const b=L.latLngBounds(selPts.length?selPts:pts),op={paddingTopLeft:[M,M],paddingBottomRight:[der,M],maxZoom:selPts.length>1?16:selPts.length?14:15};
+    const z=Math.min(MAP.getBoundsZoom(b,false,L.point(M+der,2*M)),op.maxZoom);
+    // centro que deja los márgenes como se pidió (el lado derecho puede ser distinto por la etiqueta)
+    const c=MAP.unproject(MAP.project(b.getCenter(),z).add(L.point((der-M)/2,0)),z);
+    const ya=Math.abs(MAP.getZoom()-z)<.01&&MAP.latLngToContainerPoint(c).distanceTo(MAP.getSize().divideBy(2))<3;
+    if(!ya)MAP.setView(c,z,{animate:false});
   }
+  tarjeta(sel);
   etiquetas(lbls,obst);
-  if(POP&&MK.has(POP))MK.get(POP).openPopup();
+  if(POP&&!UI.sel&&MK.has(POP))MK.get(POP).openPopup();
   PINTANDO=false;
 }
 
@@ -816,7 +906,31 @@ function mapa(vis){
 let CTX=null;
 /* Etiqueta al hacer clic en un recurso: solo lo útil */
 let POP=null,PINTANDO=false;const MK=new Map();
+/* Elegir un recurso (en el mapa o en la lista): el mapa muestra solo ese, con lo cerrado hoy (puntos verdes) y lo asignado (naranjas).
+   Tocándolo de nuevo, clic afuera o Escape vuelve a todos. */
+function elegirRec(id){if(MAP)MAP.closePopup();UI.sel=id;POP=id;fitKey='';pintar()}
+function tarjeta(p){
+  const el=$('selcard');
+  if(!p){el.hidden=true;el.innerHTML='';return}
+  el.hidden=false;
+  el.innerHTML='<button class="x" title="Ver todos">✕</button>'+popHtml(p)+
+    `<div class="ley"><span><i style="background:${cv('--ok')}"></i>Realizado</span><span><i style="background:${cv('--marca')}"></i>Asignado</span></div>`;
+  el.querySelector('.x').onclick=()=>elegirRec(null);
+}
 function marcarFila(){document.querySelectorAll('#list .it').forEach(r=>r.classList.toggle('sel',r.dataset.id===POP))}
+/* Debajo del nombre, solo uno de estos: Agenda, Bolsones, Tareas especiales, Zona Limpia o Reclamos
+   (si es motocarro o camión ya lo dice el ícono). Va lo que está haciendo; si no, de lo que más tiene hoy. */
+function servicioDe(p){
+  if(p.te&&p.te.proc)return 'Tareas especiales';
+  if(p.zl)return 'Zona Limpia';
+  if(p.per.age||/voluminoso/i.test(p.nombre))return 'Agenda';
+  if(p.per.bol)return 'Bolsones';
+  const n=k=>p.per[k]?p.per[k].pend+p.per[k].done:0;
+  if(n('rec')||n('zl'))return n('zl')>n('rec')?'Zona Limpia':'Reclamos';
+  if(p.te)return 'Tareas especiales';
+  const g=norm(p.grupo||'');
+  return /agenda/.test(g)?'Agenda':/bolson/.test(g)?'Bolsones':/barrio/.test(g)?'Tareas especiales':'';
+}
 function popHtml(p){
   const st=ST[p.st]||{l:'Fuera de planilla',c:'--off'};
   const col=p.fuera?'--off':grupoK(p)==='con'?'--ok':st.c,est=p.zl?'~':'';
@@ -828,10 +942,10 @@ function popHtml(p){
   if(['parado','sin_tarea'].includes(p.st)&&p.idle!=null)fil.push(['Sin actividad hace',dur(p.idle)]);
   if(p.te&&(p.te.proc||p.te.real||p.te.pend))fil.push(['Tareas especiales',[p.te.real?p.te.real+' hecha'+(p.te.real===1?'':'s'):'',p.te.proc?'1 en curso':'',p.te.pend?p.te.pend+' por hacer':''].filter(Boolean).join(' · ')]);
   if(p.te&&p.te.proc)fil.push(['En curso',esc(p.te.proc.tarea)]);
-  const ubic=p.approx==='mun'?'Ubicación aproximada: municipio '+esc(p.mun):p.approx?'Ubicación aproximada: centro de sus tareas':'';
+  const sv=p.fuera?'':servicioDe(p);
   return `<div class="pp" style="--c:var(${col})"><div class="pp-h"><b>${esc(p.nombre)}</b><span class="badge">${st.l}</span></div>`+
-    `<div class="pp-s">${tipoDe(p)[1].replace(/ de Zona Limpia$/,'')}</div>`+
-    `<dl>${fil.map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>`+(ubic?`<div class="pp-n">${ubic}</div>`:'')+`</div>`;
+    (sv?`<div class="pp-s">${sv}</div>`:'')+
+    `<dl>${fil.map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl></div>`;
 }
 function etiquetas(arr,obst){
   if(!arr.length)return;
@@ -840,7 +954,7 @@ function etiquetas(arr,obst){
   const size=MAP.getSize(),occ=[];
   const libre=a=>a.x>=2&&a.y>=2&&a.x2<=size.x-2&&a.y2<=size.y-2&&!occ.some(b=>a.x<b.x2&&a.x2>b.x&&a.y<b.y2&&a.y2>b.y);
   const mp=$('map').getBoundingClientRect();
-  for(const el of [$('clock'),$('actu'),document.querySelector('.mtools')]){const ck=el.getBoundingClientRect();occ.push({x:ck.left-mp.left-4,y:ck.top-mp.top-4,x2:ck.right-mp.left+4,y2:ck.bottom-mp.top+4})}
+  for(const el of [$('clock'),$('actu'),document.querySelector('.mtools'),$('selcard')]){if(el.hidden)continue;const ck=el.getBoundingClientRect();occ.push({x:ck.left-mp.left-4,y:ck.top-mp.top-4,x2:ck.right-mp.left+4,y2:ck.bottom-mp.top+4})}
   for(const o of obst){const c=MAP.latLngToContainerPoint(o.pos),r=o.sz/2;occ.push({x:c.x-r,y:c.y-r,x2:c.x+r,y2:c.y+r})}   // todos los marcadores, no solo los que llevan nombre
   for(const o of arr)o.c=MAP.latLngToContainerPoint(o.p.pos);
   const pri=st=>({sin_tarea:0,parado:1,pocas:2,sin_marca:3})[st]??4;
@@ -871,7 +985,7 @@ document.documentElement.dataset.theme=load('co_tema','dark');
 $('bTema').onclick=()=>{const r=document.documentElement;r.dataset.theme=r.dataset.theme==='dark'?'light':'dark';save('co_tema',r.dataset.theme);render()};
 const fs=()=>{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});else document.documentElement.requestFullscreen?.().catch(()=>{})};
 $('bFs').onclick=fs;
-addEventListener('keydown',e=>{if((e.key==='f'||e.key==='F')&&!/INPUT|TEXTAREA/.test(document.activeElement?.tagName||''))fs();if(e.key==='Escape'&&MAP)MAP.closePopup()});
+addEventListener('keydown',e=>{if((e.key==='f'||e.key==='F')&&!/INPUT|TEXTAREA/.test(document.activeElement?.tagName||''))fs();if(e.key==='Escape'&&MAP){MAP.closePopup();if(UI.sel)elegirRec(null)}});
 document.addEventListener('fullscreenchange',()=>setTimeout(()=>MAP&&MAP.invalidateSize(),200));
 
 /* ============================== ARRANQUE ============================== */
