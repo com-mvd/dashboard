@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="es-UY">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard COM</title>
+  <link rel="icon" href="assets/logo-ciemsa.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="assets/dashboard-common.css?v=20260922-27">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #182842;
+      --muted: #455872;
+      --border: #dbe3ed;
+      --surface: #fff;
+      --zl: #087948;
+      --rec: #1c5abe;
+      --sin: #65748a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #edf2f7;
+      color: var(--ink);
+      font: 1rem/1.4 "DM Sans", system-ui, sans-serif;
+    }
+    .cabecera {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      min-height: var(--com-dashboard-header-height);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 16px;
+      color: #fff;
+      background: linear-gradient(135deg, #0f172a 0%, #16213e 55%, #1b3f74 100%);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, .3);
+    }
+    .cabecera h1 {
+      margin: 0;
+      font: 700 clamp(1.25rem, 6vw, 1.6875rem)/32px "Segoe UI", Arial, sans-serif;
+      letter-spacing: -.01em;
+      text-align: center;
+    }
+    .cabecera-actualizacion {
+      margin: 2px 0 0;
+      color: #cbd5e1;
+      font: 400 .6875rem/1.35 var(--com-font);
+      text-align: center;
+    }
+    main { max-width: 1680px; margin: auto; padding: 14px clamp(10px, 2vw, 28px) 16px; }
+    .controls, .workspace { border: 1px solid var(--border); background: var(--surface); border-radius: 14px; }
+    .controls {
+      display: flex;
+      align-items: end;
+      justify-content: center;
+      gap: 10px 14px;
+      flex-wrap: wrap;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+    }
+    .control { display: grid; gap: 4px; min-width: 0; font-size: .875rem; font-weight: 600; }
+    .periodo {
+      display: flex;
+      align-items: end;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 0;
+      border: 0;
+      padding: 0;
+      margin: 0;
+    }
+    input, button, select { font: inherit; }
+    input[type="date"], select, .secondary, .municipios > summary {
+      min-height: 40px;
+      color: var(--ink);
+      border: 1px solid #c8d4e3;
+      border-radius: 8px;
+      background: #fff;
+      padding: 5px 11px;
+    }
+    select { width: 100%; min-width: 105px; }
+    .unidad select { width: clamp(130px, 17vw, 215px); }
+    .secondary { cursor: pointer; font-weight: 600; }
+    .secondary:hover { background: #f0f5fc; }
+    button:focus-visible, input:focus-visible, summary:focus-visible, select:focus-visible { outline: 3px solid #4784d9; outline-offset: 2px; }
+    .operativos { display: flex; align-items: end; justify-content: center; gap: 8px 14px; flex-wrap: wrap; }
+    .municipios { position: relative; margin: 0; color: var(--ink); min-width: 132px; }
+    .municipios > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; list-style: none; }
+    .municipios > summary::-webkit-details-marker { display: none; }
+    .municipios > summary::after { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1px 1px 0; transform: translateY(-2px) rotate(45deg); }
+    .municipios-menu {
+      position: absolute;
+      z-index: 800;
+      top: calc(100% + 5px);
+      left: 0;
+      width: 185px;
+      max-height: min(360px, 48dvh);
+      overflow-y: auto;
+      padding: 6px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 6px 24px #18284224;
+    }
+    .municipios-menu label { display: flex; align-items: center; gap: 8px; padding: 6px; cursor: pointer; }
+    .municipios-menu label[hidden] { display: none; }
+    .municipios-menu label:hover { background: #f0f5fc; border-radius: 6px; }
+    .municipios-menu input { accent-color: #234979; }
+    .municipios-menu button { width: 100%; min-height: 34px; }
+    .range-error { color: #a02c2c; margin: 0; flex-basis: 100%; font-size: .875rem; }
+    .workspace { display: grid; grid-template-columns: minmax(220px, 265px) minmax(0, 1fr); overflow: hidden; }
+    aside { padding: 18px; }
+    .summary strong { display: block; font-size: 2.25rem; line-height: 1.12; letter-spacing: -.045em; }
+    .summary span { color: var(--muted); font-size: .875rem; }
+    .visitas-seccion { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .visitas-repetidas {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      min-height: 42px;
+      padding: 8px 9px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--ink);
+      background: #f8fafc;
+      font-size: .875rem;
+      text-align: left;
+      cursor: pointer;
+    }
+    .visitas-repetidas:hover { border-color: #9fb0c6; }
+    .visitas-repetidas[aria-pressed="true"] { border-color: #386ab0; background: #eaf2ff; color: #1b427b; }
+    .visitas-repetidas:disabled { cursor: default; opacity: .6; }
+    .visitas-repetidas strong { font-variant-numeric: tabular-nums; }
+    h2 { margin: 15px 0 8px; font-size: .875rem; font-weight: 700; }
+    .legend { display: grid; gap: 6px; }
+    .legend button {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 7px 9px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--ink);
+      background: #f8fafc;
+      text-align: left;
+      font-size: .875rem;
+      cursor: pointer;
+    }
+    .legend button:hover { border-color: #9fb0c6; }
+    .legend button[aria-pressed="false"] { color: var(--muted); background: #fff; }
+    .legend button[aria-pressed="false"] .key { background: transparent; }
+    .key { flex: 0 0 10px; height: 10px; border-radius: 50%; background: var(--color); border: 2px solid var(--color); }
+    .count { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+    summary { cursor: pointer; }
+    .map-credit {
+      position: absolute;
+      right: 3px;
+      bottom: 3px;
+      z-index: 750;
+      margin: 0;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: #fffffff2;
+      color: var(--muted);
+      font-size: .625rem;
+      line-height: 1.2;
+    }
+    .map-credit a { color: inherit; }
+    .map-wrap { position: relative; border-left: 1px solid var(--border); min-width: 0; }
+    #mapa { min-height: 490px; height: calc(100dvh - var(--com-dashboard-header-height) - 136px); background: #e4edf2; }
+    #carga {
+      position: fixed;
+      inset: var(--com-dashboard-header-height) 0 0;
+      z-index: 900;
+      min-height: 0;
+      padding: 24px;
+    }
+    #carga .com-loading-content { flex-direction: row; gap: 11px; }
+    #carga .com-loading-message { color: var(--com-text); }
+    #carga .com-loading-error { color: var(--com-danger); }
+    .popup p { margin: .35em 0; }
+    .popup-title { font-size: .95rem; }
+    .visually-hidden {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+      clip-path: inset(50%); white-space: nowrap; border: 0;
+    }
+    @media (max-width: 700px) {
+      .controls { padding: 10px; }
+      .workspace { grid-template-columns: 1fr; }
+      aside { padding: 12px; }
+      .summary strong { font-size: 1.7rem; }
+      .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .map-wrap { border-left: 0; border-top: 1px solid var(--border); }
+      #mapa { min-height: 370px; height: 60dvh; }
+    }
+  </style>
+</head>
+<body>
+  <header class="cabecera">
+    <h1>Cobertura de contenedores</h1>
+    <p class="cabecera-actualizacion">Última actualización: <time id="ultima-actualizacion">—</time></p>
+  </header>
+  <div id="carga" class="com-loading-view">
+    <div class="com-loading-content">
+      <span id="ruedita" class="com-spinner" aria-hidden="true"></span>
+      <div id="mensaje" class="com-loading-message" role="status">Cargando información</div>
+      <div id="acciones-carga" class="com-loading-actions" hidden>
+        <button id="reintentar" class="com-retry-button" type="button">Reintentar</button>
+      </div>
+    </div>
+  </div>
+  <main id="tablero" hidden>
+    <section class="controls" aria-label="Filtros de cobertura">
+      <fieldset class="periodo" aria-label="Fechas de resolución">
+        <label class="control">Desde <input id="desde" type="date" required aria-describedby="error-fechas"></label>
+        <label class="control">Hasta <input id="hasta" type="date" required aria-describedby="error-fechas"></label>
+      </fieldset>
+      <div class="operativos">
+        <div class="control">
+          <span id="titulo-municipio">Municipio</span>
+          <details class="municipios" id="municipios">
+            <summary id="resumen-municipio" aria-labelledby="titulo-municipio seleccion-municipio"><span id="seleccion-municipio">Todos</span></summary>
+            <div class="municipios-menu">
+              <button id="todos-municipios" class="secondary" type="button">Todos</button>
+              <div id="lista-municipios"></div>
+            </div>
+          </details>
+        </div>
+        <label class="control">Empresa <select id="empresa" disabled><option value="">Todas</option></select></label>
+        <label class="control unidad">Unidad <select id="unidad" disabled><option value="">Todas</option></select></label>
+        <label class="control">Turno
+          <select id="turno">
+            <option value="">Todos</option>
+          </select>
+        </label>
+      </div>
+      <p id="error-fechas" class="range-error" role="status" hidden></p>
+    </section>
+    <section class="workspace" aria-label="Cobertura por contenedor">
+      <aside>
+        <div class="summary" aria-live="polite">
+          <strong id="cobertura">—</strong>
+          <span id="total">—</span>
+        </div>
+        <h2>Capas del mapa</h2>
+        <div class="legend">
+          <button type="button" data-layer="zl" aria-pressed="true" style="--color:var(--zl)"><span class="key" aria-hidden="true"></span>Zona Limpia <span class="count">—</span></button>
+          <button type="button" data-layer="rec" aria-pressed="true" style="--color:var(--rec)"><span class="key" aria-hidden="true"></span>Reclamos <span class="count">—</span></button>
+          <button type="button" data-layer="sin" aria-pressed="true" style="--color:var(--sin)"><span class="key" aria-hidden="true"></span>Sin cobertura <span class="count">—</span></button>
+        </div>
+        <div class="visitas-seccion">
+          <button id="filtro-repetidas" class="visitas-repetidas" type="button" aria-pressed="false" aria-controls="mapa">
+            <span>Visitados más de una vez</span>
+            <strong id="visitas-repetidas" aria-live="polite">—</strong>
+          </button>
+        </div>
+        <p id="filtro-aviso" class="visually-hidden" role="status"></p>
+      </aside>
+      <div class="map-wrap">
+        <div id="mapa" aria-label="Mapa de contenedores"></div>
+        <p class="map-credit">© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, © <a href="https://carto.com/attribution/">CARTO</a></p>
+      </div>
+    </section>
+  </main>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="assets/bases.js?v=cobertura-2"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const numero = new Intl.NumberFormat('es-UY');
+    const ordenarNombres = new Intl.Collator('es-UY', { numeric: true }).compare;
+    const formatoFecha = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Montevideo' });
+    const formatoSubida = new Intl.DateTimeFormat('es-UY', {
+      timeZone: 'America/Montevideo', day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    });
+    const limpiar = valor => String(valor ?? '').trim().toUpperCase();
+    const coordenada = valor => String(valor ?? '').trim() ? Number(valor) : NaN;
+    const posicionValida = (lat, lon) => Number.isFinite(lat) && Number.isFinite(lon)
+      && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && (lat !== 0 || lon !== 0);
+    const par = (circuito, codigo) => circuito + '|' + codigo;
+    const colores = { sin: '#65748a', zl: '#087948', rec: '#1c5abe' };
+    const empresasZL = ['DG', 'ROSADO', 'VOS CON VOZ', 'SALIR ADELANTE', 'TAYM', 'TESSA', 'EQUIPO', 'DINALI', 'POLITICOR'];
+    const turnos = ['Matutino', 'Vespertino', 'Nocturno'];
+    const cambioRosado = Date.parse('2026-10-19T00:00:00Z') / 1000;
+    const fechas = [$('desde'), $('hasta')];
+    const botones = [...document.querySelectorAll('[data-layer]')];
+    const filtroRepetidas = $('filtro-repetidas');
+    const controlesOperativos = [$('empresa'), $('unidad'), $('turno')];
+    const capas = {};
+    const municipiosElegidos = new Set();
+    let mapa;
+    let inventario;
+    let actividad;
+
+    function columna(base, campo) {
+      const indice = base.columnas.indexOf(campo);
+      if (indice === -1) throw new Error('Falta el campo ' + campo);
+      const diccionario = base.dicc?.[campo];
+      return diccionario
+        ? fila => fila[indice] == null ? null : diccionario[fila[indice]]
+        : fila => fila[indice];
+    }
+
+    function incorporar(indice, clave, contenedor) {
+      if (!indice.has(clave)) indice.set(clave, []);
+      indice.get(clave).push(contenedor);
+    }
+
+    function armarInventario(base) {
+      const id = columna(base, 'id_contenedor');
+      const codigo = columna(base, 'numero_contenedor');
+      const circuito = columna(base, 'circuito');
+      const municipio = columna(base, 'municipio');
+      const lat = columna(base, 'latitud');
+      const lon = columna(base, 'longitud');
+      const contenedores = new Map();
+      const porCodigo = new Map();
+      const porPar = new Map();
+
+      for (const fila of base.registros) {
+        const cont = {
+          id: limpiar(id(fila)), codigo: limpiar(codigo(fila)), circuito: limpiar(circuito(fila)),
+          municipio: limpiar(municipio(fila)) || '?',
+          lat: coordenada(lat(fila)), lon: coordenada(lon(fila))
+        };
+        if (!cont.id || contenedores.has(cont.id) || !posicionValida(cont.lat, cont.lon)) continue;
+        contenedores.set(cont.id, cont);
+        if (!cont.codigo) continue;
+        incorporar(porCodigo, cont.codigo, cont);
+        if (cont.circuito) incorporar(porPar, par(cont.circuito, cont.codigo), cont);
+      }
+      if (!contenedores.size) throw new Error('El inventario no tiene ubicaciones válidas');
+      return { contenedores, porCodigo, porPar };
+    }
+
+    function masCercano(candidatos, lat, lon, maximo) {
+      if (!posicionValida(lat, lon)) return null;
+      let mejor = null;
+      let distancia = Infinity;
+      let segunda = Infinity;
+      const metrosLongitud = 111195 * Math.cos(lat * Math.PI / 180);
+      for (const cont of candidatos) {
+        const metros = Math.hypot((cont.lat - lat) * 111195, (cont.lon - lon) * metrosLongitud);
+        if (metros < distancia) {
+          segunda = distancia;
+          distancia = metros;
+          mejor = cont;
+        } else if (metros < segunda) {
+          segunda = metros;
+        }
+      }
+      return distancia <= maximo && segunda - distancia >= 5 ? mejor : null;
+    }
+
+    function vincular(inventario, codigo, circuito, lat, lon) {
+      if (!codigo) return null;
+      const exactos = inventario.porPar.get(par(circuito, codigo));
+      if (exactos?.length === 1) return exactos[0];
+      if (exactos?.length) return masCercano(exactos, lat, lon, 150);
+      // Si falta el circuito o cambió, solo se cruza con el mismo número y una ubicación cercana.
+      return masCercano(inventario.porCodigo.get(codigo) ?? [], lat, lon, 60);
+    }
+
+    function responsable(unidad, porUnidad) {
+      if (!porUnidad.has(unidad)) {
+        const nombre = limpiar(unidad).replace('POLTICOR', 'POLITICOR');
+        const empresa = empresasZL.find(valor => nombre.includes(valor)) ?? 'MOTOCARROS';
+        porUnidad.set(unidad, { unidad, empresa });
+      }
+      return porUnidad.get(unidad);
+    }
+
+    // Mismos horarios de corte que el tablero Zona Limpia.
+    function turnoDe(empresa, instante) {
+      const hora = (instante % 86400) / 3600;
+      if (empresa === 'ROSADO') {
+        if (instante < cambioRosado) {
+          if (hora >= 3.5 && hora < 13) return 'Matutino';
+          if (hora >= 13 && hora < 21) return 'Vespertino';
+        } else {
+          if (hora >= 6 && hora < 15) return 'Matutino';
+          if (hora >= 15 && hora < 23) return 'Vespertino';
+        }
+        return '';
+      }
+      if (empresa === 'DG') {
+        if (hora >= 3.25 && hora < 12) return 'Matutino';
+        if (hora >= 12.5 && hora < 21) return 'Vespertino';
+        if (hora >= 21 || hora < 3.25) return 'Nocturno';
+        return '';
+      }
+      if (hora >= 3.5 && hora < 11.5) return 'Matutino';
+      if (hora >= 11.5 && hora < 20) return 'Vespertino';
+      return '';
+    }
+
+    function leerCierres(base, inventario, porUnidad = new Map()) {
+      const codigo = columna(base, 'contenedor');
+      const circuito = columna(base, 'circuito');
+      const lat = columna(base, 'latitud');
+      const lon = columna(base, 'longitud');
+      const estado = columna(base, 'estado');
+      const incidente = columna(base, 'incidente');
+      const resuelto = columna(base, 'fecha_resuelto');
+      const transportista = columna(base, 'transportista');
+      const descartado = /NO VISITAD[OA]|NO SE ENCUENTRA|NO SE PUDO|NO REALIZAD[OA]|NO RESUELT[OA]/;
+      const compacta = base.fechas?.includes('fecha_resuelto');
+      const cierres = new Map();
+
+      for (const fila of base.registros) {
+        const fecha = resuelto(fila);
+        if (fecha == null || fecha === '') continue;
+        const situacion = limpiar(estado(fila));
+        if (situacion !== 'RESUELTO' && situacion !== 'CERRADO') continue;
+        if (descartado.test(limpiar(incidente(fila)))) continue;
+        // En el formato compacto los segundos representan el reloj de Montevideo.
+        const instante = compacta ? Number(fecha) : Date.parse(String(fecha).replace(' ', 'T') + 'Z') / 1000;
+        if (!Number.isFinite(instante)) continue;
+        const cont = vincular(inventario, limpiar(codigo(fila)), limpiar(circuito(fila)), coordenada(lat(fila)), coordenada(lon(fila)));
+        const equipo = responsable(String(transportista(fila) ?? '').trim(), porUnidad);
+        if (cont) incorporar(cierres, cont.id, { instante, equipo, turno: turnoDe(equipo.empresa, instante) });
+      }
+      return cierres;
+    }
+
+    function etiquetaMunicipio(municipio) {
+      return municipio === '?' ? 'Sin municipio' : 'Municipio ' + municipio;
+    }
+
+    function municipioVisible(municipio) {
+      return municipiosElegidos.size === 0 || municipiosElegidos.has(municipio);
+    }
+
+    function cambiarMunicipios() {
+      const seleccion = [...municipiosElegidos];
+      $('seleccion-municipio').textContent = seleccion.length === 1 ? etiquetaMunicipio(seleccion[0])
+        : seleccion.length ? seleccion.length + ' seleccionados' : 'Todos';
+      renderizar(true);
+    }
+
+    function cargarMunicipios() {
+      const lista = new Set([...inventario.contenedores.values()].map(cont => cont.municipio));
+      const ordenados = [...lista].sort((a, b) => ordenarNombres(etiquetaMunicipio(a), etiquetaMunicipio(b)));
+      const opciones = $('lista-municipios');
+      opciones.replaceChildren();
+      for (const municipio of ordenados) {
+        const casilla = document.createElement('input');
+        casilla.type = 'checkbox';
+        casilla.value = municipio;
+        casilla.checked = municipiosElegidos.has(municipio);
+        const etiqueta = document.createElement('label');
+        etiqueta.append(casilla, etiquetaMunicipio(municipio));
+        opciones.append(etiqueta);
+      }
+    }
+
+    function cargarSelect(select, opciones, opcionGeneral = 'Todas') {
+      const seleccion = select.value;
+      const valores = ['', ...opciones];
+      if (valores.length === select.length && valores.every((valor, indice) => select.options[indice].value === valor)) return;
+      select.replaceChildren(...valores.map(valor => new Option(valor || opcionGeneral, valor)));
+      select.value = seleccion;
+    }
+
+    function opcionesDisponibles({ inicio, fin, empresa, unidad, turno }) {
+      const municipios = new Set(municipiosElegidos);
+      const empresas = new Set(empresa ? [empresa] : []);
+      const unidades = new Set(unidad ? [unidad] : []);
+      const turnosDisponibles = new Set(turno ? [turno] : []);
+
+      // Cada selector ignora su valor actual para ofrecer alternativas compatibles con los otros.
+      for (const cont of inventario.contenedores.values()) {
+        const municipio = municipioVisible(cont.municipio);
+        for (const cierres of [actividad.zl.get(cont.id), actividad.rec.get(cont.id)]) {
+          for (const cierre of cierres ?? []) {
+            if (cierre.instante < inicio || cierre.instante >= fin) continue;
+            const equipo = cierre.equipo;
+            const coincideEmpresa = !empresa || equipo.empresa === empresa;
+            const coincideUnidad = !unidad || equipo.unidad === unidad;
+            const coincideTurno = !turno || cierre.turno === turno;
+
+            if (coincideEmpresa && coincideUnidad && coincideTurno) municipios.add(cont.municipio);
+            if (!municipio) continue;
+            if (coincideUnidad && coincideTurno) empresas.add(equipo.empresa);
+            if (coincideEmpresa && coincideTurno && equipo.unidad) unidades.add(equipo.unidad);
+            if (coincideEmpresa && coincideUnidad && cierre.turno) turnosDisponibles.add(cierre.turno);
+          }
+        }
+      }
+      return { municipios, empresas, unidades, turnosDisponibles };
+    }
+
+    function actualizarOpciones(filtros) {
+      const { municipios, empresas, unidades, turnosDisponibles } = opcionesDisponibles(filtros);
+      const actividadFiltrada = Boolean(filtros.empresa || filtros.unidad || filtros.turno);
+      for (const casilla of $('lista-municipios').querySelectorAll('input')) {
+        casilla.parentElement.hidden = actividadFiltrada && !municipios.has(casilla.value);
+      }
+      cargarSelect($('empresa'), [...empresas].sort(ordenarNombres));
+      cargarSelect($('unidad'), [...unidades].sort(ordenarNombres));
+      cargarSelect($('turno'), turnos.filter(turno => turnosDisponibles.has(turno)), 'Todos');
+    }
+
+    function prepararMapa() {
+      if (mapa) return;
+      mapa = L.map('mapa', {
+        preferCanvas: true, maxZoom: 19, zoomControl: false, attributionControl: false
+      }).setView([-34.87, -56.16], 12);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_4dpf_1_b2ca9299be611862d5d23c88', {
+        subdomains: 'abcd', maxNativeZoom: 18, maxZoom: 19
+      }).addTo(mapa);
+      for (const categoria of Object.keys(colores)) {
+        capas[categoria] = L.layerGroup().addTo(mapa);
+      }
+    }
+
+    function ordenarPuntos() {
+      // Un mismo lienzo recibe los clics de todas las clases de puntos.
+      if (mapa.hasLayer(capas.sin)) capas.sin.eachLayer(punto => punto.bringToBack());
+    }
+
+    function contar(cierres, { inicio, fin, empresa, unidad, turno }) {
+      let cantidad = 0;
+      let primero = Infinity;
+      let ultimo = -Infinity;
+      for (const cierre of cierres ?? []) {
+        if (cierre.instante < inicio || cierre.instante >= fin) continue;
+        if (empresa && cierre.equipo.empresa !== empresa) continue;
+        if (unidad && cierre.equipo.unidad !== unidad) continue;
+        if (turno && cierre.turno !== turno) continue;
+        cantidad++;
+        primero = Math.min(cierre.instante, primero);
+        ultimo = Math.max(cierre.instante, ultimo);
+      }
+      return { cantidad, primero, ultimo };
+    }
+
+    function tieneVisitasRepetidas(zl, rec) {
+      // Los cierres del mismo contenedor registrados en el mismo segundo cuentan como una visita.
+      const primero = Math.min(zl.primero, rec.primero);
+      const ultimo = Math.max(zl.ultimo, rec.ultimo);
+      return primero < ultimo;
+    }
+
+    function categoriaDe(zl, rec) {
+      if (!zl.cantidad && !rec.cantidad) return 'sin';
+      return zl.ultimo >= rec.ultimo ? 'zl' : 'rec';
+    }
+
+    function textoCierre({ cantidad, ultimo }) {
+      if (!cantidad) return 'Sin cierre en el período';
+      const fecha = new Date(ultimo * 1000).toISOString();
+      return numero.format(cantidad) + (cantidad === 1 ? ' cierre' : ' cierres')
+        + ' · último ' + fecha.slice(8, 10) + '/' + fecha.slice(5, 7) + ' ' + fecha.slice(11, 16);
+    }
+
+    function ficha(cont, zl, rec) {
+      const ficha = document.createElement('div');
+      ficha.className = 'popup';
+      const titulo = document.createElement('strong');
+      titulo.className = 'popup-title';
+      titulo.textContent = 'Contenedor ' + (cont.codigo || cont.id);
+      ficha.append(titulo);
+      for (const texto of [
+        etiquetaMunicipio(cont.municipio),
+        cont.circuito ? 'Circuito ' + cont.circuito : 'Sin circuito en el inventario',
+        'Zona Limpia · ' + textoCierre(zl),
+        'Reclamos · ' + textoCierre(rec)
+      ]) {
+        const linea = document.createElement('p');
+        linea.textContent = texto;
+        ficha.append(linea);
+      }
+      return ficha;
+    }
+
+    function renderizar(encuadrar = false) {
+      if (!actividad) return;
+      const [desde, hasta] = fechas.map(campo => campo.value);
+      const invertido = Boolean(desde && hasta && desde > hasta);
+      const error = invertido ? 'La fecha Hasta debe ser igual o posterior a Desde.'
+        : !desde || !hasta ? 'Completá las dos fechas para aplicar el período.' : '';
+      $('error-fechas').textContent = error;
+      $('error-fechas').hidden = !error;
+      $('hasta').setCustomValidity(invertido ? error : '');
+      $('desde').setAttribute('aria-invalid', String(!desde || invertido));
+      $('hasta').setAttribute('aria-invalid', String(!hasta || invertido));
+      filtroRepetidas.disabled = Boolean(error);
+      if (error) return;
+      const filtros = {
+        inicio: Date.parse(desde + 'T00:00:00Z') / 1000,
+        fin: Date.parse(hasta + 'T00:00:00Z') / 1000 + 86400,
+        empresa: $('empresa').value, unidad: $('unidad').value, turno: $('turno').value
+      };
+      actualizarOpciones(filtros);
+      const cantidades = { sin: 0, zl: 0, rec: 0 };
+      const soloRepetidas = filtroRepetidas.getAttribute('aria-pressed') === 'true';
+      let visitasRepetidas = 0;
+      const limites = L.latLngBounds();
+      for (const capa of Object.values(capas)) capa.clearLayers();
+      mapa.closePopup();
+      for (const cont of inventario.contenedores.values()) {
+        if (!municipioVisible(cont.municipio)) continue;
+        const zl = contar(actividad.zl.get(cont.id), filtros);
+        const rec = contar(actividad.rec.get(cont.id), filtros);
+        const repetido = tieneVisitasRepetidas(zl, rec);
+        if (repetido) visitasRepetidas++;
+        const categoria = categoriaDe(zl, rec);
+        const gris = categoria === 'sin';
+        cantidades[categoria]++;
+        if (encuadrar) limites.extend([cont.lat, cont.lon]);
+        if (soloRepetidas && !repetido) continue;
+        const punto = L.circleMarker([cont.lat, cont.lon], {
+          radius: gris ? 2.5 : 4.5, fillColor: colores[categoria],
+          fillOpacity: gris ? .55 : .95, stroke: !gris, color: '#fff', weight: 1
+        }).addTo(capas[categoria]);
+        punto.bindPopup(() => ficha(cont, zl, rec));
+      }
+      ordenarPuntos();
+      if (limites.isValid()) mapa.fitBounds(limites, { padding: [20, 20], maxZoom: 14, animate: false });
+      const total = Object.values(cantidades).reduce((suma, cantidad) => suma + cantidad, 0);
+      const cubiertos = total - cantidades.sin;
+      const porcentaje = new Intl.NumberFormat('es-UY', { style: 'percent', maximumFractionDigits: 1 });
+      $('cobertura').textContent = total ? porcentaje.format(cubiertos / total) : '—';
+      $('total').textContent = numero.format(cubiertos) + ' de ' + numero.format(total);
+      $('visitas-repetidas').textContent = numero.format(visitasRepetidas);
+      for (const boton of botones) {
+        boton.querySelector('.count').textContent = numero.format(cantidades[boton.dataset.layer]);
+      }
+    }
+
+    function mostrarUltimaSubida(...fechas) {
+      const ultima = Math.max(...fechas.map(fecha => Date.parse(fecha ?? '')).filter(Number.isFinite));
+      if (!Number.isFinite(ultima)) return;
+      const partes = formatoSubida.formatToParts(ultima);
+      const { day, month, year, hour, minute } = Object.fromEntries(partes.map(({ type, value }) => [type, value]));
+      $('ultima-actualizacion').textContent = day + '/' + month + '/' + year + ' - ' + hour + ':' + minute;
+      $('ultima-actualizacion').dateTime = new Date(ultima).toISOString();
+    }
+
+    async function cargar() {
+      $('acciones-carga').hidden = true;
+      $('ruedita').hidden = false;
+      $('mensaje').classList.remove('com-loading-error');
+      $('mensaje').textContent = 'Cargando información';
+      try {
+        inventario = armarInventario(await BasesCOM.leer('contenedores'));
+        const equipos = new Map();
+        const zonaLimpia = await BasesCOM.leerConFecha('zona-limpia');
+        const zl = leerCierres(zonaLimpia.base, inventario, equipos);
+        const reclamos = await BasesCOM.leerConFecha('reclamos');
+        const rec = leerCierres(reclamos.base, inventario, equipos);
+        actividad = { zl, rec };
+        cargarMunicipios();
+        $('empresa').disabled = false;
+        $('unidad').disabled = false;
+        $('tablero').hidden = false;
+        prepararMapa();
+        renderizar(true);
+        mostrarUltimaSubida(zonaLimpia.ultimaSubida, reclamos.ultimaSubida);
+        $('carga').hidden = true;
+      } catch (error) {
+        console.error(error);
+        $('tablero').hidden = true;
+        $('ruedita').hidden = true;
+        $('mensaje').classList.add('com-loading-error');
+        $('mensaje').textContent = 'No se pudieron cargar las bases del mapa.';
+        $('acciones-carga').hidden = false;
+      }
+    }
+
+    for (const campo of [...fechas, ...controlesOperativos]) campo.addEventListener('change', () => renderizar());
+    $('lista-municipios').addEventListener('change', ({ target }) => {
+      if (target.checked) municipiosElegidos.add(target.value);
+      else municipiosElegidos.delete(target.value);
+      cambiarMunicipios();
+    });
+    $('todos-municipios').addEventListener('click', () => {
+      for (const casilla of $('lista-municipios').querySelectorAll('input')) casilla.checked = false;
+      municipiosElegidos.clear();
+      cambiarMunicipios();
+      $('municipios').open = false;
+      $('resumen-municipio').focus();
+    });
+    document.addEventListener('click', ({ target }) => {
+      if (!$('municipios').contains(target)) $('municipios').open = false;
+    });
+    $('municipios').addEventListener('keydown', evento => {
+      if (evento.key !== 'Escape' || !$('municipios').open) return;
+      $('municipios').open = false;
+      $('resumen-municipio').focus();
+    });
+    $('reintentar').addEventListener('click', cargar);
+    filtroRepetidas.addEventListener('click', () => {
+      const activar = filtroRepetidas.getAttribute('aria-pressed') !== 'true';
+      filtroRepetidas.setAttribute('aria-pressed', String(activar));
+      renderizar();
+    });
+    for (const boton of botones) {
+      boton.addEventListener('click', () => {
+        if (!mapa) return;
+        const capa = capas[boton.dataset.layer];
+        const visible = mapa.hasLayer(capa);
+        if (visible) mapa.removeLayer(capa);
+        else {
+          mapa.addLayer(capa);
+          if (capa === capas.sin) ordenarPuntos();
+        }
+        mapa.closePopup();
+        boton.setAttribute('aria-pressed', String(!visible));
+        $('filtro-aviso').textContent = (visible ? 'Capa oculta' : 'Capa visible') + ' · ' + boton.childNodes[1].textContent.trim();
+      });
+    }
+    const hoy = formatoFecha.format(new Date());
+    for (const campo of fechas) campo.value = hoy;
+    cargar();
+  </script>
+</body>
+</html>

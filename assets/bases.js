@@ -20,9 +20,9 @@ const BasesCOM = (() => {
 
   // Las bases grandes se publican comprimidas con gzip (zona-limpia.json.gz pesa ~5 MB en vez de ~41 MB).
   // Si todavía no está la comprimida, se usa la .json de antes.
-  const COMPRIMIDAS = ['agenda', 'zona-limpia', 'reclamos'];
+  const COMPRIMIDAS = ['agenda', 'zona-limpia', 'reclamos', 'contenedores'];
 
-  async function bajar(nombre) {
+  async function bajarConFecha(nombre) {
     const q = '?_=' + Date.now();
     if (COMPRIMIDAS.includes(nombre)) {
       const res = await fetch(URL_BASES + nombre + '.json.gz' + q, { cache: 'no-store' });
@@ -32,12 +32,16 @@ const BasesCOM = (() => {
         const texto = bytes[0] === 0x1f && bytes[1] === 0x8b
           ? await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text()
           : new TextDecoder().decode(bytes);
-        return JSON.parse(texto);
+        return { base: JSON.parse(texto), ultimaSubida: res.headers.get('Last-Modified') };
       }
     }
     const res = await fetch(URL_BASES + nombre + '.json' + q, { cache: 'no-store' });
     if (!res.ok) throw new Error(`No se pudo bajar la base ${nombre} (HTTP ${res.status})`);
-    return res.json();
+    return { base: await res.json(), ultimaSubida: res.headers.get('Last-Modified') };
+  }
+
+  async function bajar(nombre) {
+    return (await bajarConFecha(nombre)).base;
   }
 
   // Formato de Agenda, Zona Limpia y Reclamos: columnas del Grafana; "dicc" guarda una sola vez los textos que se
@@ -87,5 +91,6 @@ const BasesCOM = (() => {
     return nombre === 'bolsones' ? desarmarBolsones(base) : desarmar(base);
   }
 
-  return { filas, URL_BASES };
+  // Leer el formato original permite consultar solo las columnas necesarias en bases grandes.
+  return { filas, leer: bajar, leerConFecha: bajarConFecha, URL_BASES };
 })();
