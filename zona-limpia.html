@@ -473,8 +473,10 @@ function buildRows(objs){
   return objs.map(r=>{
     const fd=getCol(r,'fecha_de_reclamo')||''; if(!fd) return null;
     const inc=(getCol(r,'incidente')||'').toString().toLowerCase();
-    const noVisitado=inc.includes('no visitado');
     const fr=getCol(r,'fecha_resuelto')||'';
+    // Sin fecha_resuelto no es una visita: "No visitado" o todavía "Asignado" (incidente genérico "Zona limpia",
+    // que classify tomaría como Intervino). Así el resumen y municipios cuentan lo mismo que el mapa (19/11).
+    const noVisitado=inc.includes('no visitado')||!fr;
     const circ=(getCol(r,'circuito')||'').toString().trim();
     const mun=circ?circ.replace(/[^A-Za-z]/g,''):(getCol(r,'municipio')||'').toString().trim();
     const trans=(getCol(r,'transportista')||'').toString().trim();
