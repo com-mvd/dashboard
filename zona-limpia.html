@@ -55,8 +55,6 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f1f3f6;color:#11
 .fbar-sep{width:1px;height:18px;background:#e2e8f0}
 .btn-filt{height:30px;padding:0 12px;font-size:12px;font-weight:700;border-radius:7px;border:none;background:#0f172a;color:#fff;cursor:pointer}
 .btn-filt:hover{background:#1e293b}
-.btn-rst{height:30px;width:30px;border-radius:7px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;font-size:13px;color:#64748b}
-.btn-rst:hover{background:#f1f5f9}
 .view{display:none}.view.on{display:block;animation:fin .2s ease both}
 .vbody{padding:1rem 1.25rem}
 .krow{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-bottom:1.25rem}
@@ -201,7 +199,6 @@ tr.cr{cursor:pointer}
   .fbar-sep{display:none}
   .fbar select,.fbar input[type=date]{width:100%;min-width:0;height:40px}
   .fbar-note{grid-column:1/-1}
-  .btn-rst{grid-column:1/-1;width:100%;height:40px}
   .summary-toolbar,.map-view-head{align-items:stretch;flex-direction:column}
   .summary-map-action{width:100%}
   .drill-summary-grid{grid-template-columns:1fr}
@@ -211,21 +208,37 @@ tr.cr{cursor:pointer}
 }
 
 /* Una columna compacta por filtro para mantenerlos en una sola fila. */
-html body.page-zona-limpia .fbar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr)) 30px;gap:6px;align-items:end;padding-top:1.1rem;padding-bottom:.85rem}
+html body.page-zona-limpia .fbar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;align-items:end;padding-top:1.1rem;padding-bottom:.85rem}
 .fbar-field{display:flex;flex-direction:column;gap:3px;min-width:0}
 .fbar-field .fbar-lbl{font-size:9px;line-height:1;white-space:nowrap}
 .fbar-field select,.fbar-field input[type=date]{width:100%;min-width:0;height:36px;padding:0 6px;font-size:11px}
 .fbar-sep{display:none}
 .fbar-note{grid-column:1/-1}
-.fbar .btn-rst{grid-column:auto;width:30px;min-width:30px;height:38px;min-height:38px;font-size:15px}
 @media(max-width:760px){
-  html body.page-zona-limpia .fbar{grid-template-columns:repeat(7,minmax(0,1fr)) 30px;gap:4px;padding-top:1.05rem;padding-bottom:.8rem}
+  html body.page-zona-limpia .fbar{gap:4px;padding-top:1.05rem;padding-bottom:.8rem}
   .fbar-field .fbar-lbl{font-size:8px;letter-spacing:.02em}
   .fbar-field select,.fbar-field input[type=date]{height:36px;padding:0 3px;font-size:10px}
-  .fbar .btn-rst{grid-column:auto;width:30px;min-width:30px;height:38px;min-height:38px}
 }
 </style>
 <link rel="stylesheet" href="assets/dashboard-common.css?v=20260922-27">
+<style>
+.page-zona-limpia #f-mun{position:relative;min-width:0}
+.page-zona-limpia #f-mun>summary{display:flex;align-items:center;justify-content:space-between;gap:6px;height:40px;min-width:0;padding:0 10px;border:1px solid var(--com-border-strong);border-radius:var(--com-radius-control);background:#fff;color:#0f172a;cursor:pointer;list-style:none}
+#f-mun>summary::-webkit-details-marker{display:none}
+#f-mun>summary::after{content:"";flex:0 0 6px;height:6px;border:solid currentColor;border-width:0 1px 1px 0;transform:translateY(-2px) rotate(45deg)}
+#f-mun-valor{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zl-municipios-menu{position:absolute;z-index:400;top:calc(100% + 4px);left:0;width:max-content;min-width:100%;max-height:50vh;overflow:auto;padding:5px;border:1px solid var(--com-border);border-radius:var(--com-radius-control);background:#fff;box-shadow:var(--com-shadow-raised)}
+.zl-municipios-menu label,.zl-municipios-menu button{display:flex;align-items:center;gap:7px;width:100%;min-height:32px;padding:4px 8px;cursor:pointer}
+.zl-municipios-menu label[hidden]{display:none}
+.zl-municipios-menu label:hover,.zl-municipios-menu button:hover{background:var(--com-primary-soft)}
+.zl-municipios-menu button{border:0;border-radius:4px;background:#fff;font:inherit;font-weight:700;color:inherit}
+@media(max-width:900px){
+  html body.page-zona-limpia .fbar{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+}
+@media(max-width:480px){
+  html body.page-zona-limpia .fbar{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+</style>
 </head>
 <body class="page-zona-limpia">
 
@@ -273,21 +286,27 @@ html body.page-zona-limpia .fbar{display:grid;grid-template-columns:repeat(7,min
 
   <div class="fbar">
     <div class="fbar-field">
-      <label class="fbar-lbl" for="f-mun">Municipio</label>
-      <select id="f-mun"><option value="">Todos</option></select>
-    </div>
-    <div class="fbar-field">
-      <label class="fbar-lbl" for="f-circ">Circuito</label>
-      <select id="f-circ"><option value="">Todos</option></select>
-    </div>
-    <div class="fbar-sep"></div>
-    <div class="fbar-field">
       <label class="fbar-lbl" for="f-d1">Desde</label>
       <input type="date" id="f-d1">
     </div>
     <div class="fbar-field">
       <label class="fbar-lbl" for="f-d2">Hasta</label>
       <input type="date" id="f-d2">
+    </div>
+    <div class="fbar-sep"></div>
+    <div class="fbar-field">
+      <span class="fbar-lbl" id="lbl-f-mun">Municipio</span>
+      <details id="f-mun">
+        <summary id="f-mun-resumen" aria-labelledby="lbl-f-mun f-mun-valor"><span id="f-mun-valor">Todos</span></summary>
+        <div class="zl-municipios-menu">
+          <button id="f-mun-todos" type="button">Todos</button>
+          <div id="f-mun-opciones"></div>
+        </div>
+      </details>
+    </div>
+    <div class="fbar-field">
+      <label class="fbar-lbl" for="f-circ">Circuito</label>
+      <select id="f-circ"><option value="">Todos</option></select>
     </div>
     <div class="fbar-sep"></div>
     <div class="fbar-field">
@@ -304,7 +323,6 @@ html body.page-zona-limpia .fbar{display:grid;grid-template-columns:repeat(7,min
       <select id="f-turno"><option value="">Todos</option><option value="Matutino">Matutino</option><option value="Vespertino">Vespertino</option><option value="Nocturno">Nocturno</option></select>
     </div>
     <span class="fbar-note" id="cov-filter-note" hidden>La cobertura se calcula por territorio y período; empresa, unidad y turno no aplican en esta vista.</span>
-    <button class="btn-rst com-icon-button" type="button" aria-label="Restablecer filtros" title="Restablecer filtros" onclick="resetF()">↻</button>
   </div>
   <p class="com-range-error" id="zl-range-error" role="alert">La fecha Desde no puede ser posterior a Hasta.</p>
 
@@ -395,7 +413,7 @@ html body.page-zona-limpia .fbar{display:grid;grid-template-columns:repeat(7,min
           <div id="map-legend-dyn" style="display:flex;gap:10px;flex-wrap:wrap"></div>
           <div class="minfo" id="minfo"></div>
         </div>
-        <div class="mresumen" id="map-resumen"></div>
+        <div class="mresumen" id="map-resumen" aria-live="polite"></div>
         <div id="mel"></div>
       </div>
     </div>
@@ -407,7 +425,7 @@ html body.page-zona-limpia .fbar{display:grid;grid-template-columns:repeat(7,min
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="assets/bases.js"></script>
+<script src="assets/bases.js?v=cobertura-2"></script>
 <script>
 /* ══════════════════════════════════════════════════════════════════════
    CONEXIÓN — bases de Zona Limpia y Reclamos de Supabase Storage
@@ -433,6 +451,9 @@ const VBS=['v0','v1','v2','v3'];
 function bi(n){return n===0?0:n===1?1:n===2?2:3}
 
 let PARSED=[],RAW=[],FILT=[],ALL2=[],FILT2=[],UNI={},REC={},hasRec=false;
+let inventarioMapa=null;
+let visitasMapa=[];
+const municipiosElegidos=new Set();
 let curTab='res',selMun=null,mapMode='estado',mapaAbierto=false; // el mapa abre siempre en 'Estado de última vez'
 let mapCov=null,mlayerCov=null;
 const ZL_SESSION_KEY='com.zona-limpia.filters';
@@ -445,9 +466,17 @@ function restoreZLState(){
   try{
     const state=JSON.parse(sessionStorage.getItem(ZL_SESSION_KEY)||'null');
     if(!state)return;
-    const setIfValid=(id,value)=>{const el=document.getElementById(id);if([...el.options].some(o=>o.value===value))el.value=value||''};
-    setIfValid('f-mun',state.mun);updCirc();setIfValid('f-circ',state.circ);
-    setIfValid('f-emp',state.emp);updUnidad();setIfValid('f-unidad',state.unidad);setIfValid('f-turno',state.turno);
+    const muns=Array.isArray(state.muns)?state.muns:state.mun?[state.mun]:[];
+    for(const casilla of document.querySelectorAll('#f-mun-opciones input')){
+      if(muns.includes(casilla.value)){casilla.checked=true;municipiosElegidos.add(casilla.value);}
+    }
+    resumirMunicipios();
+    for(const [id,valor] of [['f-circ',state.circ],['f-emp',state.emp],['f-unidad',state.unidad],['f-turno',state.turno]]){
+      if(typeof valor!=='string'||!valor)continue;
+      const control=document.getElementById(id);
+      if(![...control.options].some(opcion=>opcion.value===valor))control.add(new Option(valor,valor));
+      control.value=valor;
+    }
     if(['res','mun','tra','cov','map'].includes(state.tab))curTab=state.tab;
   }catch(_){sessionStorage.removeItem(ZL_SESSION_KEY)}
 }
@@ -494,7 +523,7 @@ function buildRows(objs){
       trans,emp:empN,tipoUnidad:(emp==='DINALI'||!emp)?'Motocarro':'Camión',turno,
       cont,dir:(getCol(r,'dirección')||'').toString(),
       lat:parseFloat(getCol(r,'latitud')),lng:parseFloat(getCol(r,'longitud')),
-      esVisita:!!fr,horaTxt:fr?String(fr).slice(11,16):'',frTxt:fr?String(fr).slice(0,16):''
+      esVisita:!!fr,horaTxt:fr?String(fr).slice(11,16):'',frTxt:fr?String(fr).slice(0,16):'',resuelto:String(fr)
     };
   }).filter(Boolean);
 }
@@ -524,6 +553,53 @@ function buildREC(objs){
   return rec;
 }
 
+const claveMapa=valor=>String(valor??'').trim().toUpperCase();
+const ordenarFiltros=new Intl.Collator('es-UY',{numeric:true}).compare;
+const numeroMapa=new Intl.NumberFormat('es-UY');
+const pctMapa=new Intl.NumberFormat('es-UY',{style:'percent',maximumFractionDigits:1});
+
+function buildInventarioMapa(filas){
+  const porId=new Map(),porPar=new Map(),porCodigo=new Map();
+  for(const fila of filas){
+    const id=claveMapa(fila.id_contenedor);
+    const lat=parseFloat(fila.latitud),lng=parseFloat(fila.longitud);
+    if(!id||porId.has(id)||!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180||(!lat&&!lng))continue;
+    const cont={id,lat,lng,codigo:claveMapa(fila.numero_contenedor),mun:claveMapa(fila.municipio)||'?',circ:claveMapa(fila.circuito)};
+    porId.set(id,cont);
+    if(!cont.codigo)continue;
+    if(!porCodigo.has(cont.codigo))porCodigo.set(cont.codigo,[]);
+    porCodigo.get(cont.codigo).push(cont);
+    if(!cont.circ)continue;
+    const par=cont.circ+'|'+cont.codigo;
+    if(!porPar.has(par))porPar.set(par,[]);
+    porPar.get(par).push(cont);
+  }
+  if(!porId.size)throw new Error('El inventario de contenedores no tiene ubicaciones válidas.');
+  return {porId,porPar,porCodigo};
+}
+
+function contenedorMasCercano(candidatos,lat,lng,maximo){
+  if(!Number.isFinite(lat)||!Number.isFinite(lng))return null;
+  const metrosLongitud=111195*Math.cos(lat*Math.PI/180);
+  let mejor=null,distancia=Infinity,segunda=Infinity;
+  for(const cont of candidatos){
+    const metros=Math.hypot((cont.lat-lat)*111195,(cont.lng-lng)*metrosLongitud);
+    if(metros<distancia){segunda=distancia;distancia=metros;mejor=cont;}
+    else if(metros<segunda)segunda=metros;
+  }
+  return distancia<=maximo&&segunda-distancia>=5?mejor:null;
+}
+
+function vincularVisita(inventario,r){
+  const codigo=claveMapa(r.cont),circ=claveMapa(r.circ);
+  if(!codigo)return null;
+  const exactos=inventario.porPar.get(circ+'|'+codigo);
+  if(exactos?.length===1)return exactos[0];
+  if(exactos?.length)return contenedorMasCercano(exactos,r.lat,r.lng,150);
+  // El número se repite entre circuitos: en ausencia de un cruce exacto, se exige proximidad.
+  return contenedorMasCercano(inventario.porCodigo.get(codigo)??[],r.lat,r.lng,60);
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    CARGA INICIAL
    ══════════════════════════════════════════════════════════════════════ */
@@ -539,10 +615,24 @@ async function initAll(){
   document.getElementById('cscreen').style.display='flex';
   document.getElementById('dscreen').style.display='none';
   try{
-    const objsZL=await BasesCOM.filas('zona-limpia');
+    const [objsZL,inventario]=await Promise.all([
+      BasesCOM.filas('zona-limpia'),
+      BasesCOM.filas('contenedores').then(buildInventarioMapa).catch(error=>{
+        console.warn('No se pudo cargar el inventario de contenedores:',error);
+        return null;
+      })
+    ]);
     if(loadToken!==zlLoadToken)return;
     PARSED=buildRows(objsZL);
     RAW=PARSED.filter(r=>!r.noVisitado);
+    inventarioMapa=inventario;
+    visitasMapa=[];
+    if(inventarioMapa){
+      for(const r of RAW){
+        const cont=vincularVisita(inventarioMapa,r);
+        if(cont)visitasMapa.push({r,cont});
+      }
+    }
     ALL2=PARSED.filter(r=>r.circ&&r.cont);
     UNI=buildUni(ALL2);
     REC={};hasRec=false;
@@ -550,13 +640,13 @@ async function initAll(){
     restoreZLState();
     document.getElementById('cscreen').style.display='none';
     document.getElementById('dscreen').style.display='flex';
-    autoF();
     swTab(curTab);
+    autoF();
     BasesCOM.filas('reclamos').then(objsREC=>{
       if(loadToken!==zlLoadToken)return;
       REC=buildREC(objsREC);hasRec=Object.keys(REC).length>0;
       rCov();
-      if(mapaAbierto)rMapa();
+      if(curTab==='map'&&mapaAbierto)rMapa(true);
     }).catch(err=>console.warn('No se pudo cargar información complementaria de Zona Limpia:',err));
   }catch(err){
     console.error('No se pudo cargar Zona Limpia:',err);
@@ -567,48 +657,126 @@ async function initAll(){
   }
 }
 
+function resumirMunicipios(){
+  const muns=[...municipiosElegidos];
+  document.getElementById('f-mun-valor').textContent=muns.length===1?munLabel(muns[0]):muns.length?muns.length+' seleccionados':'Todos';
+}
+
+function cargarMunicipios(){
+  const muns=new Set(RAW.map(r=>r.mun));
+  for(const cont of inventarioMapa?.porId.values()??[])muns.add(cont.mun);
+  const lista=document.getElementById('f-mun-opciones');
+  lista.replaceChildren();
+  for(const mun of [...muns].sort((a,b)=>ordenarFiltros(munLabel(a),munLabel(b)))){
+    const casilla=document.createElement('input');
+    casilla.type='checkbox';casilla.value=mun;
+    const etiqueta=document.createElement('label');
+    etiqueta.append(casilla,munLabel(mun));
+    lista.append(etiqueta);
+  }
+}
+
+function limpiarMunicipios(){
+  municipiosElegidos.clear();
+  for(const casilla of document.querySelectorAll('#f-mun-opciones input'))casilla.checked=false;
+  resumirMunicipios();
+}
+
+function fechasIniciales(){
+  let ultima='';
+  for(const r of RAW)if(r.fecha>ultima)ultima=r.fecha;
+  document.getElementById('f-d1').value=ultima;
+  document.getElementById('f-d2').value=ultima;
+}
+
 function initFilters(){
-  const muns=[...new Set(RAW.map(r=>r.mun))].sort();
-  const sm=document.getElementById('f-mun');
-  sm.innerHTML='<option value="">Todos</option>';
-  muns.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=munLabel(m);sm.appendChild(o)});
-  sm.onchange=()=>{updCirc();autoF();};
-  updCirc();
-  const emps=[...new Set(RAW.map(r=>r.emp))].sort();
-  const se=document.getElementById('f-emp');
-  se.innerHTML='<option value="">Todas</option>';
-  emps.forEach(e=>{const o=document.createElement('option');o.value=e;o.textContent=e;se.appendChild(o)});
-  se.onchange=()=>{updUnidad();autoF();};
-  updUnidad();
-  ['f-circ','f-d1','f-d2','f-unidad','f-turno'].forEach(id=>{document.getElementById(id).onchange=autoF;});
-  const dates=RAW.map(r=>r.fecha).sort();
-  // siempre abre en el último día con datos
-  if(dates.length){document.getElementById('f-d1').value=dates[dates.length-1];document.getElementById('f-d2').value=dates[dates.length-1];}
-  document.getElementById('f-d2').min=document.getElementById('f-d1').value||'';
-  document.getElementById('f-d2').setCustomValidity('');
+  cargarMunicipios();
+  limpiarMunicipios();
+  fechasIniciales();
+  for(const id of ['f-circ','f-d1','f-d2','f-emp','f-unidad','f-turno']){
+    const campo=document.getElementById(id);
+    if(campo.tagName==='SELECT')campo.value='';
+    campo.onchange=autoF;
+  }
+  const menu=document.getElementById('f-mun');
+  const resumen=document.getElementById('f-mun-resumen');
+  document.getElementById('f-mun-opciones').onchange=({target})=>{
+    if(target.checked)municipiosElegidos.add(target.value);
+    else municipiosElegidos.delete(target.value);
+    resumirMunicipios();autoF();
+  };
+  document.getElementById('f-mun-todos').onclick=()=>{
+    limpiarMunicipios();menu.open=false;resumen.focus();autoF();
+  };
+  menu.onkeydown=evento=>{
+    if(evento.key==='Escape'&&menu.open){menu.open=false;resumen.focus();}
+  };
 }
-function updCirc(){
-  const mun=document.getElementById('f-mun').value;
-  const circs=[...new Set(RAW.filter(r=>!mun||r.mun===mun).map(r=>r.circ))].sort();
-  const sel=document.getElementById('f-circ');
-  sel.innerHTML='<option value="">Todos</option>';
-  circs.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;sel.appendChild(o)});
+document.addEventListener('click',({target})=>{
+  const menu=document.getElementById('f-mun');
+  if(!menu.contains(target))menu.open=false;
+});
+
+function gf(){return{muns:[...municipiosElegidos],circ:document.getElementById('f-circ').value,d1:document.getElementById('f-d1').value,d2:document.getElementById('f-d2').value,emp:document.getElementById('f-emp').value,unidad:document.getElementById('f-unidad').value,turno:document.getElementById('f-turno').value}}
+const coincideMun=(mun,f)=>!f.muns.length||f.muns.includes(mun);
+const coincideFecha=(r,f)=>(!f.d1||r.fecha>=f.d1)&&(!f.d2||r.fecha<=f.d2);
+const coincideOperativa=(r,f)=>(!f.emp||r.emp===f.emp)&&(!f.unidad||r.trans===f.unidad)&&(!f.turno||r.turno===f.turno);
+
+function opcionesFiltros(f,vista){
+  const enMapa=vista==='map'&&inventarioMapa;
+  const activos=vista==='cov'?{...f,emp:'',unidad:'',turno:''}:f;
+  const muns=new Set(f.muns);
+  const circs=new Set(),emps=new Set(),unidades=new Set(),turnos=new Set();
+  function sumarVisita(r,territorio){
+    if(!coincideFecha(r,f))return;
+    const mun=coincideMun(territorio.mun,f),circ=!f.circ||territorio.circ===f.circ;
+    const emp=!activos.emp||r.emp===activos.emp,unidad=!activos.unidad||r.trans===activos.unidad;
+    const turno=!activos.turno||r.turno===activos.turno;
+    if(circ&&emp&&unidad&&turno)muns.add(territorio.mun);
+    if(mun&&emp&&unidad&&turno&&territorio.circ)circs.add(territorio.circ);
+    if(mun&&circ&&unidad&&turno)emps.add(r.emp);
+    if(mun&&circ&&emp&&turno&&r.trans)unidades.add(r.trans);
+    if(mun&&circ&&emp&&unidad&&r.turno)turnos.add(r.turno);
+  }
+  if(enMapa){
+    for(const {r,cont} of visitasMapa)sumarVisita(r,cont);
+    // Sin filtros de personal, el territorio se puede elegir aunque tenga cero visitas.
+    if(!activos.emp&&!activos.unidad&&!activos.turno){
+      for(const cont of inventarioMapa.porId.values()){
+        if(!f.circ||cont.circ===f.circ)muns.add(cont.mun);
+        if(coincideMun(cont.mun,f)&&cont.circ)circs.add(cont.circ);
+      }
+    }
+  }else{
+    for(const r of RAW)sumarVisita(r,r);
+    if(vista==='cov'){
+      for(const [circ,datos] of Object.entries(UNI)){
+        if(!f.circ||circ===f.circ)muns.add(datos.mun);
+        if(coincideMun(datos.mun,f)&&circ)circs.add(circ);
+      }
+    }
+  }
+  return {muns,circs,emps,unidades,turnos};
 }
 
-function updUnidad(){
-  const emp=document.getElementById('f-emp').value;
-  const sel=document.getElementById('f-unidad');
-  const actual=sel.value;
-  const unidades=[...new Set(RAW.filter(r=>(!emp||r.emp===emp)).map(r=>r.trans).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-  sel.innerHTML='<option value="">Todas</option>';
-  unidades.forEach(u=>{const o=document.createElement('option');o.value=u;o.textContent=u;sel.appendChild(o)});
-  if(unidades.includes(actual))sel.value=actual;
+function cargarOpciones(id,opciones,porDefecto){
+  const select=document.getElementById(id),actual=select.value;
+  if(actual)opciones.add(actual);
+  const valores=['',...(id==='f-turno'?TORD.filter(turno=>opciones.has(turno)):[...opciones].sort(ordenarFiltros))];
+  if(valores.length===select.length&&valores.every((v,i)=>select.options[i].value===v))return;
+  select.replaceChildren(...valores.map(v=>new Option(v||porDefecto,v)));
+  select.value=valores.includes(actual)?actual:'';
 }
 
-function gf(){return{mun:document.getElementById('f-mun').value,circ:document.getElementById('f-circ').value,d1:document.getElementById('f-d1').value,d2:document.getElementById('f-d2').value,emp:document.getElementById('f-emp').value,unidad:document.getElementById('f-unidad').value,turno:document.getElementById('f-turno').value}}
+function actualizarOpciones(f){
+  const {muns,circs,emps,unidades,turnos}=opcionesFiltros(f,curTab);
+  for(const casilla of document.querySelectorAll('#f-mun-opciones input'))casilla.parentElement.hidden=!muns.has(casilla.value);
+  cargarOpciones('f-circ',circs,'Todos');cargarOpciones('f-emp',emps,'Todas');
+  cargarOpciones('f-unidad',unidades,'Todas');cargarOpciones('f-turno',turnos,'Todos');
+}
 
 function autoF(){
-  const{mun,circ,d1,d2,emp,unidad,turno}=gf();
+  const f=gf(),{circ,d1,d2}=f;
   const hasta=document.getElementById('f-d2');
   hasta.min=d1||'';
   const invalid=Boolean(d1&&d2&&d1>d2);
@@ -617,23 +785,12 @@ function autoF(){
   hasta.setAttribute('aria-invalid',String(invalid));
   document.getElementById('zl-range-error').classList.toggle('show',invalid);
   if(invalid)return;
-  FILT=RAW.filter(r=>(!mun||r.mun===mun)&&(!circ||r.circ===circ)&&(!d1||r.fecha>=d1)&&(!d2||r.fecha<=d2)&&(!emp||r.emp===emp)&&(!unidad||r.trans===unidad)&&(!turno||r.turno===turno));
-  FILT2=ALL2.filter(r=>(!mun||r.mun===mun)&&(!circ||r.circ===circ)&&(!d1||r.fecha>=d1)&&(!d2||r.fecha<=d2));
-  selMun=null;saveZLState();render();rCov();if(mapaAbierto)rMapa();
+  actualizarOpciones(f);
+  const territorio=r=>coincideMun(r.mun,f)&&(!circ||r.circ===circ)&&coincideFecha(r,f);
+  FILT=RAW.filter(r=>territorio(r)&&coincideOperativa(r,f));
+  FILT2=ALL2.filter(territorio);
+  selMun=null;saveZLState();render();rCov();if(curTab==='map'&&mapaAbierto)rMapa();
 }
-function resetF(){
-  sessionStorage.removeItem(ZL_SESSION_KEY);
-  ['f-mun','f-circ','f-emp','f-unidad','f-turno'].forEach(id=>document.getElementById(id).value='');
-  updCirc();
-  updUnidad();
-  const dates=RAW.map(r=>r.fecha).sort();
-  // siempre abre en el último día con datos
-  if(dates.length){document.getElementById('f-d1').value=dates[dates.length-1];document.getElementById('f-d2').value=dates[dates.length-1];}
-  document.getElementById('f-d2').min=document.getElementById('f-d1').value||'';
-  document.getElementById('f-d2').setCustomValidity('');
-  FILT=[...RAW];FILT2=[...ALL2];selMun=null;render();rCov();if(mapaAbierto)rMapa();
-}
-
 function swTab(t){
   curTab=t;
   document.querySelectorAll('.ntab').forEach(b=>{b.classList.remove('on');b.setAttribute('aria-selected','false')});
@@ -647,6 +804,8 @@ function swTab(t){
     document.getElementById('lbl-f-'+nombre).classList.toggle('is-disabled',esCobertura);
   });
   document.getElementById('cov-filter-note').hidden=!esCobertura;
+  const filtros=gf();
+  if(!filtros.d1||!filtros.d2||filtros.d1<=filtros.d2)actualizarOpciones(filtros);
   saveZLState();
   if(t==='map')ensureMap();
 }
@@ -845,8 +1004,8 @@ function cVis(data){
   return v;
 }
 function gAC(){
-  const{mun,circ}=gf();
-  return Object.keys(UNI).filter(c=>(!mun||UNI[c].mun===mun)&&(!circ||c===circ)).sort();
+  const f=gf();
+  return Object.keys(UNI).filter(c=>coincideMun(UNI[c].mun,f)&&(!f.circ||c===f.circ)).sort();
 }
 function getTopRec(circ,n){
   if(!hasRec||!REC[circ])return new Set();
@@ -1001,34 +1160,60 @@ function aplicarTamanoMarcadores(){
 }
 const nomUnidad=r=>(r.trans||'—')+(r.emp&&r.emp!=='MOTOCARROS'?' ('+r.emp+')':'');
 const fmtF=f=>f.split('-').reverse().join('/');
+const escMapa=valor=>String(valor).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function quienHizo(rows){
   if(!rows||!rows.length)return '';
-  const o=[...rows].sort((a,b)=>(b.fecha+b.horaTxt).localeCompare(a.fecha+a.horaTxt)).slice(0,4);
-  return '<br><b>Hecho por:</b>'+o.map(r=>'<br>· '+nomUnidad(r)+' — '+fmtF(r.fecha)+(r.horaTxt?' '+r.horaTxt:'')).join('')+(rows.length>4?'<br><span style="color:#94a3b8">+'+(rows.length-4)+' visitas más</span>':'');
+  const o=[...rows].sort((a,b)=>b.resuelto.localeCompare(a.resuelto)).slice(0,4);
+  return '<br><b>Hecho por:</b>'+o.map(r=>'<br>· '+escMapa(nomUnidad(r))+' — '+fmtF(r.resuelto.slice(0,10))+(r.horaTxt?' '+r.horaTxt:'')).join('')+(rows.length>4?'<br><span style="color:#94a3b8">+'+(rows.length-4)+' visitas más</span>':'');
 }
 function ultimoDato(){
   let m='';for(const r of PARSED)if(r.frTxt>m)m=r.frTxt;
   return m?' · datos hasta '+m.slice(8,10)+'/'+m.slice(5,7)+' '+m.slice(11,16):'';
 }
-function resumenMapa(){
-  const{d1,d2}=gf();const fmt=x=>x.split('-').reverse().join('/');
-  const cont=new Map();
-  FILT.forEach(r=>{
-    if(r.noVisitado||!r.esVisita)return;
-    const k=r.circ+'|'+r.cont;let o=cont.get(k);
-    if(!o){o={i:false,l:false};cont.set(k,o)}
-    if(r.cat==='intervino')o.i=true;else if(r.cat==='limpio')o.l=true;
-  });
-  let lim=0,ya=0;cont.forEach(o=>{if(o.i)lim++;else if(o.l)ya++});
-  const tit=d1&&d1===d2?'Resumen del '+fmt(d1):'Resumen '+(d1?fmt(d1):'')+' – '+(d2?fmt(d2):'');
-  const it=(n,l,c)=>`<span class="mr-i"><span class="mr-d" style="background:${c}"></span><b>${n.toLocaleString()}</b>${l}</span>`;
-  document.getElementById('map-resumen').innerHTML=`<span class="mr-t">${tit}</span>`+it(cont.size,'contenedores visitados','#475569')+it(lim,'contenedores limpiados',CC.intervino)+it(ya,'ya estaban limpios',CC.limpio)+it(cont.size-lim-ya,'no pudo / no encontró',CC.no_fue);
+function datosMapa(f){
+  const enTerritorio=cont=>coincideMun(cont.mun,f)&&(!f.circ||cont.circ===f.circ);
+  const contenedores=[...inventarioMapa.porId.values()].filter(enTerritorio);
+  const porContenedor=new Map();
+  for(const {r,cont} of visitasMapa){
+    if(!enTerritorio(cont)||!coincideFecha(r,f)||!coincideOperativa(r,f))continue;
+    if(!porContenedor.has(cont.id))porContenedor.set(cont.id,[]);
+    porContenedor.get(cont.id).push(r);
+  }
+  return {contenedores,porContenedor};
+}
+function resumenMapa({d1,d2},{contenedores,porContenedor}){
+  let limpios=0,yaLimpios=0;
+  for(const visitas of porContenedor.values()){
+    if(visitas.some(r=>r.cat==='intervino'))limpios++;
+    else if(visitas.some(r=>r.cat==='limpio'))yaLimpios++;
+  }
+  const visitados=porContenedor.size,total=contenedores.length;
+  const pct=total?pctMapa.format(visitados/total):'—';
+  const tit=d1&&d1===d2?'Resumen del '+fmtF(d1):'Resumen '+(d1?fmtF(d1):'')+' – '+(d2?fmtF(d2):'');
+  const it=(n,l,c)=>`<span class="mr-i"><span class="mr-d" style="background:${c}"></span><b>${n}</b>${l}</span>`;
+  document.getElementById('map-resumen').innerHTML=`<span class="mr-t">${tit}</span>`
+    +it(pct,'cobertura','#1b3f74')
+    +it(numeroMapa.format(visitados)+' de '+numeroMapa.format(total),'visitados','#475569')
+    +it(numeroMapa.format(limpios),'contenedores limpiados',CC.intervino)
+    +it(numeroMapa.format(yaLimpios),'ya estaban limpios',CC.limpio)
+    +it(numeroMapa.format(visitados-limpios-yaLimpios),'no pudo / no encontró',CC.no_fue);
 }
 function rMapa(sinReencuadre){
   if(!mapCov)return;
+  const filtros=gf();
+  if(filtros.d1&&filtros.d2&&filtros.d1>filtros.d2)return;
   mapCov.invalidateSize();
-  legendDyn();resumenMapa();
-  if(mapMode==='cobertura')rMapCobertura(sinReencuadre);else rMapEstado(sinReencuadre);
+  legendDyn();
+  mlayerCov.clearLayers();marcadores=[];
+  if(!inventarioMapa){
+    document.getElementById('map-resumen').textContent='No se pudo cargar la capa de contenedores. Usá Actualizar para reintentar.';
+    document.getElementById('minfo').textContent='';
+    mapCov.setView([-34.9,-56.16],13);
+    return;
+  }
+  const datos=datosMapa(filtros);
+  resumenMapa(filtros,datos);
+  dibujarContenedores(datos,sinReencuadre);
   aplicarTamanoMarcadores();
 }
 function nuevoMarcador(info,color,hot,ring,popup){
@@ -1038,53 +1223,37 @@ function nuevoMarcador(info,color,hot,ring,popup){
   mk.bindPopup(popup).addTo(mlayerCov);
   marcadores.push({mk,ring:rg,hot});
 }
-function rMapCobertura(sinReencuadre){
-  mlayerCov.clearLayers();marcadores=[];
-  const oc=OCULTOS.cobertura;
-  const IDX=new Map();FILT.forEach(r=>{if(!r.esVisita)return;const k=r.circ+'|'+r.cont;if(!IDX.has(k))IDX.set(k,[]);IDX.get(k).push(r)});
-  const vis=cVis(FILT);const circs=gAC();const pts=[];let shown=0;
-  circs.forEach(c=>{
-    const topRec=getTopRec(c,3);
-    Object.entries(UNI[c].conts).forEach(([id,info])=>{
-      if(!info.lat||!info.lng)return;
-      const v=(vis[c]&&vis[c][id])||0;
-      const b=bi(v);
-      if(oc.has(String(b)))return;
-      const rc=hasRec&&REC[c]&&REC[c][id]?REC[c][id]:0;
-      const hot=topRec.has(id);
-      if(oc.has('rec')&&hot)return;
-      nuevoMarcador(info,COLS_COB[b],hot,hot,`<b>Cont. #${id}</b> · ${c}${info.dir?'<br><span style="font-size:11px;color:#666">'+info.dir+'</span>':''}<br><b>Visitas ZL:</b> ${v}${rc>0?`<br><b style="color:#d97706">Reclamos:</b> ${rc}`:''}${quienHizo(IDX.get(c+'|'+id))}`);
-      pts.push([info.lat,info.lng]);shown++;
-    });
-  });
-  document.getElementById('minfo').textContent=shown.toLocaleString()+' contenedores'+ultimoDato();
+function dibujarContenedores({contenedores,porContenedor},sinReencuadre){
+  const oc=OCULTOS[mapMode],pts=[],masReclamados=new Map();
+  for(const cont of contenedores){
+    const visitas=porContenedor.get(cont.id)??[];
+    let color,detalle,hot=false;
+    const ultima=visitas.reduce((reciente,r)=>!reciente||r.resuelto>reciente.resuelto?r:reciente,null);
+    if(mapMode==='cobertura'){
+      const b=bi(visitas.length);
+      if(oc.has(String(b)))continue;
+      if(!masReclamados.has(cont.circ))masReclamados.set(cont.circ,getTopRec(cont.circ,3));
+      hot=masReclamados.get(cont.circ).has(cont.codigo);
+      if(oc.has('rec')&&hot)continue;
+      const rc=REC[cont.circ]?.[cont.codigo]??0;
+      color=COLS_COB[b];
+      detalle=`<br><b>Visitas ZL:</b> ${visitas.length}${rc>0?`<br><b style="color:#d97706">Reclamos:</b> ${rc}`:''}${quienHizo(visitas)}`;
+    }else{
+      const estado=ultima?.cat??'gris';
+      if(oc.has(estado))continue;
+      color=CC[estado]??CC_GRIS;
+      detalle=`<br><b>Última vez:</b> ${ultima?fmtF(ultima.resuelto.slice(0,10))+' '+ultima.horaTxt:'—'}<br><b>Estado:</b> ${CL[estado]??'Sin datos en el período'}${ultima?'<br><b>Hecho por:</b> '+escMapa(nomUnidad(ultima)):''}`;
+    }
+    const nombre='<b>Cont. #'+escMapa(cont.codigo||cont.id)+'</b> · '+escMapa(cont.circ||munLabel(cont.mun));
+    const direccion=ultima?.dir?'<br><span style="font-size:11px;color:#666">'+escMapa(ultima.dir)+'</span>':'';
+    nuevoMarcador(cont,color,hot,hot,nombre+direccion+detalle);
+    pts.push([cont.lat,cont.lng]);
+  }
+  document.getElementById('minfo').textContent=numeroMapa.format(pts.length)+' contenedores'+ultimoDato();
   if(sinReencuadre)return;
-  if(pts.length)mapCov.fitBounds(L.latLngBounds(pts),{padding:[28,28]});else mapCov.setView([-34.9,-56.16],13);
-}
-function rMapEstado(sinReencuadre){
-  mlayerCov.clearLayers();marcadores=[];
-  const oc=OCULTOS.estado;
-  const last={};
-  FILT.forEach(r=>{
-    if(r.noVisitado||!r.cat||!r.esVisita)return; // sin fecha_resuelto = asignado pero todavía no visitado
-    const key=r.circ+'|||'+r.cont;
-    if(!last[key]||r.fecha>last[key].fecha)last[key]=r;
-  });
-  const circs=gAC();const pts=[];let shown=0;
-  circs.forEach(c=>{
-    Object.entries(UNI[c].conts).forEach(([id,info])=>{
-      if(!info.lat||!info.lng)return;
-      const row=last[c+'|||'+id];
-      let color=CC_GRIS,label='Sin datos en el período',k='gris';
-      if(row){color=CC[row.cat];label=CL[row.cat];k=row.cat;}
-      if(oc.has(k))return;
-      nuevoMarcador(info,color,false,false,`<b>Cont. #${id}</b> · ${c}${info.dir?'<br><span style="font-size:11px;color:#666">'+info.dir+'</span>':''}<br><b>Última vez:</b> ${row?row.fecha.split('-').reverse().join('/'):'—'}<br><b>Estado:</b> ${label}${row?'<br><b>Hecho por:</b> '+nomUnidad(row)+(row.horaTxt?' · '+row.horaTxt:''):''}`);
-      pts.push([info.lat,info.lng]);shown++;
-    });
-  });
-  document.getElementById('minfo').textContent=shown.toLocaleString()+' contenedores'+ultimoDato();
-  if(sinReencuadre)return;
-  if(pts.length)mapCov.fitBounds(L.latLngBounds(pts),{padding:[28,28]});else mapCov.setView([-34.9,-56.16],13);
+  const encuadre=pts.length?pts:contenedores.map(cont=>[cont.lat,cont.lng]);
+  if(encuadre.length)mapCov.fitBounds(L.latLngBounds(encuadre),{padding:[28,28],maxZoom:17});
+  else mapCov.setView([-34.9,-56.16],13);
 }
 
 /* ── tooltip ── */
