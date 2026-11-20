@@ -3,12 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow">
 <title>Zona Limpia · últimas 72 hs</title>
-<link rel="icon" type="image/png" href="assets/logo-ciemsa.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
-/* Autocontenido para embeber (iframe): ocupa el 100% del espacio que le den, sin márgenes. */
+/* Autocontenido para embeber (iframe): ocupa el 100% del espacio que le den, sin márgenes ni dependencias locales. */
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 #mel,#dscreen{position:absolute;inset:0}
 #mel{background:#e5e7eb}
@@ -42,82 +40,19 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:t
 <div id="dscreen"><div id="mel"></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="assets/bases.js?v=cobertura-2"></script>
 <script>
-const HORAS=72;                                   // ventana de visitas que se muestran
-const MUN_SIEMPRE=new Set(['B']);                 // municipios que se suponen siempre realizados
-const CIRC_SIEMPRE=new Set(['E104','E105','E108','E109','E112','E113','E114']); // circuitos que se suponen siempre realizados
-const REFRESCO_MIN=10;
+/* ══════════════════════════════════════════════════════════════════════
+   Zona Limpia: solo mapa, siempre las últimas 72 hs.
+   Los datos vienen de la API pública (API_REST_Publica), que ya entrega esa ventana fija.
+   ══════════════════════════════════════════════════════════════════════ */
+const API_ZL='http://200.58.147.58:8050/zona-limpia';
+const REFRESCO_MIN=10; // la API se actualiza cada 30 min; se vuelve a pedir cada 10
 
-let contenedores=[];
+let VISITADOS=[],FIJOS=[];
 let mapaAbierto=false;
 let mapCov=null,mlayerCov=null;
 let zlLoadToken=0,primeraCarga=true;
-
-const clave=v=>String(v??'').trim().toUpperCase();
-// Reloj de Montevideo como "AAAA-MM-DD HH:MM:SS" (igual formato que fecha_resuelto)
-function ahoraMvd(restarHoras=0){
-  const d=new Date(Date.now()-restarHoras*3600e3);
-  return new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Montevideo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(d);
-}
-
-/* ══ Inventario fijo de contenedores y vínculo con las visitas (igual que el dashboard) ══ */
-function buildInventario(filas){
-  const porId=new Map(),porPar=new Map(),porCodigo=new Map();
-  for(const fila of filas){
-    const id=clave(fila.id_contenedor);
-    const lat=parseFloat(fila.latitud),lng=parseFloat(fila.longitud);
-    if(!id||porId.has(id)||!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180||(!lat&&!lng))continue;
-    const cont={id,lat,lng,codigo:clave(fila.numero_contenedor),mun:clave(fila.municipio)||'?',circ:clave(fila.circuito)};
-    porId.set(id,cont);
-    if(!cont.codigo)continue;
-    if(!porCodigo.has(cont.codigo))porCodigo.set(cont.codigo,[]);
-    porCodigo.get(cont.codigo).push(cont);
-    if(!cont.circ)continue;
-    const par=cont.circ+'|'+cont.codigo;
-    if(!porPar.has(par))porPar.set(par,[]);
-    porPar.get(par).push(cont);
-  }
-  if(!porId.size)throw new Error('El inventario de contenedores no tiene ubicaciones válidas.');
-  return {porId,porPar,porCodigo};
-}
-function masCercano(candidatos,lat,lng,maximo){
-  if(!Number.isFinite(lat)||!Number.isFinite(lng))return null;
-  const mLng=111195*Math.cos(lat*Math.PI/180);
-  let mejor=null,dist=Infinity,segunda=Infinity;
-  for(const c of candidatos){
-    const m=Math.hypot((c.lat-lat)*111195,(c.lng-lng)*mLng);
-    if(m<dist){segunda=dist;dist=m;mejor=c}else if(m<segunda)segunda=m;
-  }
-  return dist<=maximo&&segunda-dist>=5?mejor:null;
-}
-function vincular(inv,codigoRaw,circRaw,lat,lng){
-  const codigo=clave(codigoRaw),circ=clave(circRaw);
-  if(!codigo)return null;
-  const exactos=inv.porPar.get(circ+'|'+codigo);
-  if(exactos?.length===1)return exactos[0];
-  if(exactos?.length)return masCercano(exactos,lat,lng,150);
-  return masCercano(inv.porCodigo.get(codigo)??[],lat,lng,60);
-}
-
-async function cargarContenedores(){
-  const [visitas, inventario]=await Promise.all([
-    BasesCOM.filas('zona-limpia'),
-    BasesCOM.filas('contenedores').then(buildInventario)
-  ]);
-  const desde=ahoraMvd(HORAS);
-  const ids=new Set();
-  for(const visita of visitas){
-    if(!visita.fecha_resuelto||visita.fecha_resuelto<desde)continue;
-    const incidente=String(visita.incidente||'').toLowerCase();
-    if(incidente.includes('no visitado')||incidente.includes('no se encuentra')||incidente.includes('no se pudo'))continue;
-    const cont=vincular(inventario,visita.contenedor,visita.circuito,parseFloat(visita.latitud),parseFloat(visita.longitud));
-    if(cont)ids.add(cont.id);
-  }
-  return Array.from(inventario.porId.values()).filter(cont=>
-    ids.has(cont.id)||MUN_SIEMPRE.has(cont.mun)||CIRC_SIEMPRE.has(cont.circ)
-  );
-}
+const coordOk=c=>isFinite(c.latitud)&&isFinite(c.longitud);
 
 async function initAll(){
   const loadToken=++zlLoadToken;
@@ -131,9 +66,16 @@ async function initAll(){
     document.getElementById('dscreen').style.display='none';
   }
   try{
-    const puntos=await cargarContenedores();
+    const ac=new AbortController(),t=setTimeout(()=>ac.abort(),30000);
+    let js;
+    try{
+      const res=await fetch(API_ZL,{cache:'no-store',signal:ac.signal});
+      if(!res.ok)throw new Error('HTTP '+res.status);
+      js=await res.json();
+    }finally{clearTimeout(t)}
     if(loadToken!==zlLoadToken)return;
-    contenedores=puntos;
+    VISITADOS=(js.visitados||[]).filter(coordOk);
+    FIJOS=(js.contenedores_fijos||[]).filter(coordOk);
     document.getElementById('cscreen').style.display='none';
     document.getElementById('dscreen').style.display='flex';
     if(primeraCarga){primeraCarga=false;ensureMap();}else rMapa(true);
@@ -193,7 +135,11 @@ function rMapa(sinReencuadre){
     marcadores.push(L.circleMarker([lat,lng],{radius:4,fillColor:COLOR_PUNTO,fillOpacity:.85,color:'#fff',weight:1,interactive:false}).addTo(mlayerCov));
     pts.push([lat,lng]);
   };
-  contenedores.forEach(cont=>punto(cont.lat,cont.lng));
+  // Contenedores fijos (municipio B, circuitos E y cargas municipales): siempre
+  const fijosGid=new Set();
+  FIJOS.forEach(c=>{fijosGid.add(String(c.gid));punto(c.latitud,c.longitud)});
+  // Contenedores con visita en las últimas 72 hs (los fijos ya están dibujados)
+  VISITADOS.forEach(c=>{if(!fijosGid.has(String(c.gid)))punto(c.latitud,c.longitud)});
   aplicarTamanoMarcadores();
   if(sinReencuadre)return;
   if(pts.length)mapCov.fitBounds(L.latLngBounds(pts),{padding:[28,28]});else mapCov.setView([-34.9,-56.16],13);
