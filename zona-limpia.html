@@ -43,8 +43,6 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f1f3f6;color:#11
 .ntab{height:27px;padding:0 13px;font-size:12px;font-weight:600;border-radius:6px;border:none;background:transparent;color:#64748b;cursor:pointer;white-space:nowrap;transition:all .12s}
 .ntab:hover{color:#fff}
 .ntab.on{background:#fff;color:#0f172a}
-.btn-nw{height:27px;padding:0 10px;font-size:11px;border-radius:6px;border:1px solid #334155;background:transparent;color:#94a3b8;cursor:pointer}
-.btn-nw:hover{background:#1e293b;color:#fff}
 .fbar{background:#fff;border-bottom:1px solid #e2e8f0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:.55rem 1.25rem}
 .fbar-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8}
 .fbar-lbl.is-disabled{opacity:.45}
@@ -272,7 +270,7 @@ html body.page-zona-limpia .fbar{display:grid;grid-template-columns:repeat(7,min
         <div class="brand-name">Dashboard Zona Limpia</div>
       </div>
     </div>
-    <div class="topbar-actions" style="display:flex;align-items:center;gap:8px;margin-left:auto">
+    <div class="topbar-actions" style="display:flex;align-items:center;margin-left:auto">
       <div class="nav" role="tablist" aria-label="Vistas de Zona Limpia">
         <button class="ntab on" id="nt-res" role="tab" aria-selected="true" onclick="swTab('res')">Resumen</button>
         <button class="ntab" id="nt-mun" role="tab" aria-selected="false" onclick="swTab('mun')">Municipios</button>
@@ -280,7 +278,6 @@ html body.page-zona-limpia .fbar{display:grid;grid-template-columns:repeat(7,min
         <button class="ntab" id="nt-cov" role="tab" aria-selected="false" onclick="swTab('cov')">Análisis de cobertura</button>
         <button class="ntab" id="nt-map" role="tab" aria-selected="false" onclick="swTab('map')">Mapa</button>
       </div>
-      <button class="btn-nw" onclick="initAll()">↻ Actualizar</button>
     </div>
   </div>
 
@@ -442,8 +439,18 @@ function getCol(r,n){const k=Object.keys(r).find(k=>k.toLowerCase()===n.toLowerC
 const CC={intervino:'#16a34a',limpio:'#0ea5e9',no_fue:'#dc2626'};
 const CC_GRIS='#94a3b8';
 const CL={intervino:'Intervino',limpio:'Ya limpio',no_fue:'No pudo/encontró'};
-const ECOLS={DG:'#6366f1',ROSADO:'#ec4899',TAYM:'#f59e0b','VOS CON VOZ':'#14b8a6','SALIR ADELANTE':'#8b5cf6',TESSA:'#64748b',EQUIPO:'#06b6d4',DINALI:'#0f766e',POLITICOR:'#e11d48',MOTOCARROS:'#ca8a04'};
+const ECOLS={DG:'#6366f1',ROSADO:'#ec4899',TAYM:'#f59e0b','VOS CON VOZ':'#14b8a6','SALIR ADELANTE':'#8b5cf6',TESSA:'#64748b',EQUIPO:'#06b6d4',DINALI:'#0f766e',POLITICOR:'#e11d48',MOTOCARROS:'#ca8a04',CIEMSA:'#1b3f74'};
 const ELST=['DG','ROSADO','VOS CON VOZ','SALIR ADELANTE','TAYM','TESSA','EQUIPO','DINALI','POLITICOR'];
+const EMPRESA_POR_UNIDAD=new Map([
+  ['DI.NA.LI-001','DINALI'],
+  ['Edgar Alvarez-52','MOTOCARROS'],
+  ['Trasnportista Ciemsa 1-Ciemsa1','CIEMSA'],
+  ['Trasnportista Ciemsa 2-Ciemsa2','CIEMSA'],
+  ['Trasnportista Ciemsa 3-Ciemsa3','CIEMSA'],
+  ['Trasnportista Ciemsa 4-Ciemsa4','CIEMSA'],
+  ['Trasnportista Ciemsa 5-Ciemsa5','CIEMSA'],
+  ['VOLUMINOSO 5 - SA-1037','SALIR ADELANTE'],
+]);
 const TORD=['Matutino','Vespertino','Nocturno'];
 const COLS_COB=['#E24B4A','#378ADD','#16a34a','#d97706'];
 const LBLS_COB=['Sin visitas','1 visita','2 visitas','3 o más'];
@@ -481,8 +488,12 @@ function restoreZLState(){
   }catch(_){sessionStorage.removeItem(ZL_SESSION_KEY)}
 }
 
-function getEmp(t){const u=(t||'').toUpperCase().replace('POLTICOR','POLITICOR'); // en la base figura como 'POLTICOR 1-010' (typo)
-  for(const e of ELST)if(u.includes(e))return e;return null;}
+function getEmp(unidad){
+  const corregida=EMPRESA_POR_UNIDAD.get(unidad);
+  if(corregida)return corregida;
+  const nombre=unidad.toUpperCase().replace('POLTICOR','POLITICOR');
+  return ELST.find(empresa=>nombre.includes(empresa))||'MOTOCARROS';
+}
 function getTurno(emp,h,fecha){
   // Rosado cambió su horario: hasta el 18/10/2026 trabajaba ~06-12 y 14-20; desde el 19/10/2026 trabaja 08-14 y 16-22
   if(emp==='ROSADO'){
@@ -511,8 +522,7 @@ function buildRows(objs){
     const trans=(getCol(r,'transportista')||'').toString().trim();
     const emp=getEmp(trans);
     const hora=fr?(new Date(fr).getHours()+(new Date(fr).getMinutes()/60)):null;
-    const empN=emp||'MOTOCARROS'; // los motocarros individuales (sin empresa) se agrupan como la empresa MOTOCARROS; cada unidad es el motocarrista
-    const turno=(hora!=null)?getTurno(empN,hora,String(fr).slice(0,10)):null;
+    const turno=(hora!=null)?getTurno(emp,hora,String(fr).slice(0,10)):null;
     const cont=(getCol(r,'contenedor')||'').toString().trim();
     // El turno nocturno cruza la medianoche: una visita de 00:00 a 03:15 pertenece al turno que empezó el día anterior
     let fecha=String(fd).slice(0,10);
@@ -520,7 +530,7 @@ function buildRows(objs){
     return{
       mun:mun||'?',circ,fecha,
       noVisitado,cat:noVisitado?null:classify(inc),
-      trans,emp:empN,tipoUnidad:(emp==='DINALI'||!emp)?'Motocarro':'Camión',turno,
+      trans,emp,tipoUnidad:(emp==='DINALI'||emp==='MOTOCARROS')?'Motocarro':'Camión',turno,
       cont,dir:(getCol(r,'dirección')||'').toString(),
       lat:parseFloat(getCol(r,'latitud')),lng:parseFloat(getCol(r,'longitud')),
       esVisita:!!fr,horaTxt:fr?String(fr).slice(11,16):'',frTxt:fr?String(fr).slice(0,16):'',resuelto:String(fr)
@@ -734,7 +744,7 @@ function opcionesFiltros(f,vista){
     const turno=!activos.turno||r.turno===activos.turno;
     if(circ&&emp&&unidad&&turno)muns.add(territorio.mun);
     if(mun&&emp&&unidad&&turno&&territorio.circ)circs.add(territorio.circ);
-    if(mun&&circ&&unidad&&turno)emps.add(r.emp);
+    if(mun&&circ&&turno)emps.add(r.emp);
     if(mun&&circ&&emp&&turno&&r.trans)unidades.add(r.trans);
     if(mun&&circ&&emp&&unidad&&r.turno)turnos.add(r.turno);
   }
@@ -776,6 +786,9 @@ function actualizarOpciones(f){
 }
 
 function autoF(){
+  const empresa=document.getElementById('f-emp').value;
+  const unidad=document.getElementById('f-unidad');
+  if(empresa&&unidad.value&&getEmp(unidad.value)!==empresa)unidad.value='';
   const f=gf(),{circ,d1,d2}=f;
   const hasta=document.getElementById('f-d2');
   hasta.min=d1||'';
@@ -1206,7 +1219,7 @@ function rMapa(sinReencuadre){
   legendDyn();
   mlayerCov.clearLayers();marcadores=[];
   if(!inventarioMapa){
-    document.getElementById('map-resumen').textContent='No se pudo cargar la capa de contenedores. Usá Actualizar para reintentar.';
+    document.getElementById('map-resumen').textContent='No se pudo cargar la capa de contenedores. Recargá la página para reintentar.';
     document.getElementById('minfo').textContent='';
     mapCov.setView([-34.9,-56.16],13);
     return;
