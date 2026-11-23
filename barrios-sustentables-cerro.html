@@ -267,7 +267,7 @@ async function cargar() {
     let json;
     if (VALIDADAS) json = await leerVaciados('cerro');
     else {
-      const res = await fetch(FUENTE + '?t=' + Date.now(), { cache: 'no-store' });
+      const res = await fetch(FUENTE, { cache: 'no-cache' });   // si no cambió, Supabase contesta 304 y se usa la guardada
       if (!res.ok) throw new Error('HTTP ' + res.status);
       json = await res.json();
     }

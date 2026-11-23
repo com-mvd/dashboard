@@ -22,10 +22,12 @@ const BasesCOM = (() => {
   // Si todavía no está la comprimida, se usa la .json de antes.
   const COMPRIMIDAS = ['agenda', 'zona-limpia', 'reclamos', 'contenedores'];
 
+  // 'no-cache' y la misma dirección siempre: el navegador guarda la base y le pregunta a Supabase si cambió; si no cambió,
+  // Supabase contesta 304 sin mandarla de nuevo (antes, con ?_=hora y 'no-store', se bajaba entera cada vez: 23/11/2026).
   async function bajarConFecha(nombre) {
-    const q = '?_=' + Date.now();
+    const q = '';
     if (COMPRIMIDAS.includes(nombre)) {
-      const res = await fetch(URL_BASES + nombre + '.json.gz' + q, { cache: 'no-store' });
+      const res = await fetch(URL_BASES + nombre + '.json.gz' + q, { cache: 'no-cache' });
       if (res.ok) {
         const bytes = new Uint8Array(await res.arrayBuffer());
         // Por si el navegador ya la descomprimió solo: gzip empieza con 1f 8b
@@ -35,7 +37,7 @@ const BasesCOM = (() => {
         return { base: JSON.parse(texto), ultimaSubida: res.headers.get('Last-Modified') };
       }
     }
-    const res = await fetch(URL_BASES + nombre + '.json' + q, { cache: 'no-store' });
+    const res = await fetch(URL_BASES + nombre + '.json' + q, { cache: 'no-cache' });
     if (!res.ok) throw new Error(`No se pudo bajar la base ${nombre} (HTTP ${res.status})`);
     return { base: await res.json(), ultimaSubida: res.headers.get('Last-Modified') };
   }

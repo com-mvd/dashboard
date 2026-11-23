@@ -303,9 +303,9 @@ const UI={origen:'todos',filtro:null,sel:null,q:'',nombres:load('co_nombres',tru
 /* ============================== LECTURA: PLANILLAS ============================== */
 /* Todo pedido tiene un tiempo máximo: si la red se cuelga (wifi de la tele, VPN), se corta y el próximo vuelve a intentar.
    Sin esto, un pedido colgado dejaba la página sin actualizar hasta recargarla a mano. */
-async function pedir(u,leer,ms=30000){
+async function pedir(u,leer,ms=30000,cache='no-store'){
   const ac=new AbortController(),t=setTimeout(()=>ac.abort(),ms);
-  try{const r=await fetch(u,{cache:'no-store',signal:ac.signal});if(!r.ok)throw new Error('HTTP '+r.status);return await leer(r)}
+  try{const r=await fetch(u,{cache,signal:ac.signal});if(!r.ok)throw new Error('HTTP '+r.status);return await leer(r)}
   catch(e){throw e.name==='AbortError'?new Error('sin respuesta en '+ms/1000+' s'):e}
   finally{clearTimeout(t)}
 }
@@ -454,7 +454,8 @@ async function cargarAsis(){
 
 /* ============================== LECTURA: BASES DE SUPABASE ============================== */
 async function bajar(arch,ver){
-  const b=new Uint8Array(await pedir(CFG.SB+arch+'?v='+encodeURIComponent(ver||Date.now()),r=>r.arrayBuffer()));
+  // misma dirección y 'no-cache': si el archivo no cambió desde el último pedido, Supabase contesta 304 sin mandarlo de nuevo
+  const b=new Uint8Array(await pedir(CFG.SB+arch,r=>r.arrayBuffer(),30000,'no-cache'));
   const t=(b[0]===0x1f&&b[1]===0x8b)?await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'))).text():new TextDecoder().decode(b);
   return JSON.parse(t);
 }
