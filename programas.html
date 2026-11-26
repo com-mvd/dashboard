@@ -209,7 +209,7 @@ a{color:inherit}
 <script>
 // ── Datos ──────────────────────────────────────────────────────────────────
 // Vaciados de la tabla vaciados de Supabase. Se leen sin login con la clave pública, de la vista vaciados_publico:
-// solo edificio, fecha, bolsones > 0 y destino final (desde el 24/11, sql/32 de com2), sin datos personales. Se cargan en COM 2 (panel Admin).
+// solo edificio, fecha, bolsones (incluido 0) y destino final, sin datos personales. Se cargan en COM 2 (panel Admin).
 const SUPABASE = 'https://srgduwdvkgqrrmhxpzlx.supabase.co', CLAVE_PUBLICA = 'sb_publishable_8ZP6-05anDJSBy39IwbSdQ_18iWRnd6';
 async function leerVaciados(tablero) {
   const res = await fetch(`${SUPABASE}/rest/v1/vaciados_publico?tablero=eq.${tablero}&select=edificio,fecha,bolsones,destino&order=fecha.desc`,
@@ -337,8 +337,8 @@ const PROGRAMAS = {
 async function puntosPrograma(cont, tablero, lugares) {
     const porEdif = new Map(lugares.map(l => [norm(l.edif ?? l.nombre), l]));
     const G = (await leerVaciados(tablero))
-      .map(f => ({ lugar: porEdif.get(norm(f.edif)), fGesD: f.fGes ? new Date(f.fGes) : null, cant: Number(f.cant), destino: f.destino }))
-      .filter(r => r.lugar && r.fGesD && r.cant > 0).sort((a, b) => b.fGesD - a.fGesD);
+      .map(f => ({ lugar: porEdif.get(norm(f.edif)), fGesD: f.fGes ? new Date(f.fGes) : null, cant: f.cant, destino: f.destino }))
+      .filter(r => r.lugar && r.fGesD && Number.isInteger(r.cant) && r.cant >= 0).sort((a, b) => b.fGesD - a.fGesD);
     const por = lugares.map(l => {
       const g = G.filter(r => r.lugar === l);
       return { l, n: g.length, bolsones: g.reduce((s, r) => s + r.cant, 0), ultima: g[0]?.fGesD || null };
